@@ -77,6 +77,21 @@ export function usd(v) {
   return ok(v) ? fmtUSD.format(v) : TRACO;
 }
 
+const fmtMoeda = new Map([['USD', fmtUSD]]);
+/** Valor na moeda da operação (USD ou EUR), ex.: "€ 1.234,56". */
+export function dinheiro(v, moeda = 'USD') {
+  if (!ok(v)) return TRACO;
+  if (!fmtMoeda.has(moeda)) {
+    fmtMoeda.set(moeda, new Intl.NumberFormat(LOCALE, { style: 'currency', currency: moeda, minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  }
+  return fmtMoeda.get(moeda).format(v);
+}
+
+/** Símbolo da moeda para rótulos ("US$", "€"). */
+export function simboloMoeda(moeda = 'USD') {
+  return moeda === 'EUR' ? '€' : 'US$';
+}
+
 /** Número com casas fixas (padrão 2). */
 export function num(v, casas = 2, casasMax = casas) {
   return ok(v) ? fmtNumero(casas, casasMax).format(v) : TRACO;

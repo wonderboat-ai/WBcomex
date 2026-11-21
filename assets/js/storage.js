@@ -47,10 +47,13 @@ export function novaEntrada(regras, hoje = hojeISO()) {
       referencia: '',
       data: hoje,
       regimeAduaneiro: 'comum',
-      regimeTributario: 'simples',
+      regimeTributario: regras.regimePadrao || 'simples',
       uf: 'SC',
+      moeda: 'USD',
+      paridadeUSD: null,
       cambioFiscal: null,
       dataCambioFiscal: '',
+      origemCambioFiscal: '',
       icms: regras.icmsPadrao.SC ?? null,
       pis: regras.pis,
       cofins: regras.cofins,
@@ -58,7 +61,7 @@ export function novaEntrada(regras, hoje = hojeISO()) {
       seguroUSD: 0,
       rateio: 'fob',
       despesas: [],
-      pagamento: { modo: 'cambio', cambioPagamento: null, iof: null, valorPagoBRL: null },
+      pagamento: { modo: 'cambio', cambioPagamento: null, iof: null, valorPagoBRL: null, origemCambioPagamento: '' },
       siscomexManualBRL: null
     },
     itens: [itemVazio()],
@@ -99,10 +102,13 @@ export function normalizarEntrada(bruto, regras) {
     throw new ErroArquivo(`O campo "${campo}" deveria ser texto.`);
   };
 
-  for (const [campo, esperado] of [['regimeAduaneiro', 'comum'], ['regimeTributario', 'simples'], ['rateio', 'fob']]) {
+  for (const [campo, esperado] of [['regimeAduaneiro', 'comum'], ['rateio', 'fob']]) {
     if (op[campo] != null && op[campo] !== esperado) {
       throw new ErroArquivo(`O v1 só calcula ${campo} = "${esperado}" (o arquivo tem "${op[campo]}").`);
     }
+  }
+  if (op.regimeTributario != null && !['simples', 'simples-hibrido'].includes(op.regimeTributario)) {
+    throw new ErroArquivo(`Regime "${op.regimeTributario}" não suportado: use "simples" ou "simples-hibrido".`);
   }
 
   const pg = op.pagamento;
@@ -112,16 +118,22 @@ export function normalizarEntrada(bruto, regras) {
   if (op.despesas != null && !Array.isArray(op.despesas)) throw new ErroArquivo('O campo "operacao.despesas" deveria ser uma lista.');
 
   const uf = texto(op.uf, 'operacao.uf').toUpperCase() || 'SC';
+  const moeda = texto(op.moeda, 'operacao.moeda').toUpperCase() || 'USD';
+  if (!['USD', 'EUR'].includes(moeda)) throw new ErroArquivo(`Moeda "${moeda}" não suportada: use USD ou EUR.`);
+  const origem = (v) => (v === 'ptax' || v === 'manual' ? v : '');
 
   return {
     operacao: {
       referencia: texto(op.referencia, 'operacao.referencia'),
       data: texto(op.data, 'operacao.data'),
       regimeAduaneiro: 'comum',
-      regimeTributario: 'simples',
+      regimeTributario: op.regimeTributario || 'simples',
       uf,
+      moeda,
+      paridadeUSD: numero(op.paridadeUSD, 'operacao.paridadeUSD'),
       cambioFiscal: numero(op.cambioFiscal, 'operacao.cambioFiscal'),
       dataCambioFiscal: texto(op.dataCambioFiscal, 'operacao.dataCambioFiscal'),
+      origemCambioFiscal: origem(op.origemCambioFiscal),
       icms: op.icms === undefined ? (regras.icmsPadrao[uf] ?? null) : numero(op.icms, 'operacao.icms'),
       pis: op.pis === undefined ? regras.pis : numero(op.pis, 'operacao.pis'),
       cofins: op.cofins === undefined ? regras.cofins : numero(op.cofins, 'operacao.cofins'),
@@ -140,7 +152,8 @@ export function normalizarEntrada(bruto, regras) {
         modo: pg.modo,
         cambioPagamento: numero(pg.cambioPagamento, 'operacao.pagamento.cambioPagamento'),
         iof: numero(pg.iof, 'operacao.pagamento.iof'),
-        valorPagoBRL: numero(pg.valorPagoBRL, 'operacao.pagamento.valorPagoBRL')
+        valorPagoBRL: numero(pg.valorPagoBRL, 'operacao.pagamento.valorPagoBRL'),
+        origemCambioPagamento: origem(pg.origemCambioPagamento)
       },
       siscomexManualBRL: numero(op.siscomexManualBRL, 'operacao.siscomexManualBRL')
     },
@@ -183,8 +196,11 @@ export function exportarEntrada(estado) {
       regimeAduaneiro: op.regimeAduaneiro,
       regimeTributario: op.regimeTributario,
       uf: op.uf,
+      moeda: op.moeda || 'USD',
+      paridadeUSD: op.moeda === 'EUR' ? op.paridadeUSD : 1,
       cambioFiscal: op.cambioFiscal,
       dataCambioFiscal: op.dataCambioFiscal,
+      origemCambioFiscal: op.origemCambioFiscal || '',
       icms: op.icms,
       pis: op.pis,
       cofins: op.cofins,

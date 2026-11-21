@@ -86,27 +86,69 @@ describe('CSV (export.js)', () => {
 });
 
 describe('PTAX (fx.js)', () => {
-  test('URL usa datas MM-DD-AAAA entre aspas', () => {
-    const url = urlPtax(new Date(2026, 10, 21), 10);
-    assert.match(url, /@dataInicial=%2711-11-2026%27/);
-    assert.match(url, /@dataFinalCotacao=%2711-21-2026%27/);
-    assert.match(url, /^https:\/\/olinda\.bcb\.gov\.br\//);
+  test('URL do dólar e do euro: datas MM-DD-AAAA entre aspas e só o boletim de fechamento', () => {
+    const usd = urlPtax('USD', new Date('2026-11-21T15:00:00Z'), 10);
+    assert.match(usd, /^https:\/\/olinda\.bcb\.gov\.br\/olinda\/servico\/PTAX\/versao\/v1\/odata\/CotacaoMoedaPeriodo/);
+    assert.match(usd, /@moeda=%27USD%27/);
+    assert.match(usd, /@dataInicial=%2711-11-2026%27/);
+    assert.match(usd, /@dataFinalCotacao=%2711-21-2026%27/);
+    assert.match(usd, /startswith\(tipoBoletim,%27Fechamento%27\)/);
+    assert.match(usd, /\$orderby=dataHoraCotacao%20desc/);
+    assert.match(urlPtax('EUR', new Date('2026-11-21T15:00:00Z')), /@moeda=%27EUR%27/);
+    // 01h UTC de 22/11 ainda é 21/11 em Brasília: a data final segue o calendário de Brasília
+    assert.match(urlPtax('USD', new Date('2026-11-22T01:00:00Z'), 10), /@dataFinalCotacao=%2711-21-2026%27/);
+    assert.throws(() => urlPtax('GBP'), /Moeda não suportada/);
   });
 
-  test('pega a última PTAX de venda do período', async () => {
+  test('dólar: pega a última PTAX de venda e paridade 1', async () => {
     const fetchFalso = async () => ({
       ok: true,
       json: async () => ({ value: [
-        { cotacaoCompra: 5.61, cotacaoVenda: 5.6143, dataHoraCotacao: '2026-11-18 13:08:21.353' },
-        { cotacaoCompra: 5.888, cotacaoVenda: 5.8889, dataHoraCotacao: '2026-11-19 13:04:00.000' }
+        { paridadeVenda: 1, cotacaoCompra: 5.8096, cotacaoVenda: 5.8102, dataHoraCotacao: '2026-11-18 13:08:44.271', tipoBoletim: 'Fechamento' },
+        { paridadeVenda: 1, cotacaoCompra: 5.8883, cotacaoVenda: 5.8889, dataHoraCotacao: '2026-11-19 13:04:18.325', tipoBoletim: 'Fechamento' }
       ] })
     });
-    const r = await buscarPtax(new Date(2026, 10, 21), fetchFalso);
-    assert.deepEqual(r, { venda: 5.8889, data: '2026-11-19', fonte: 'PTAX venda · BCB' });
+    const r = await buscarPtax('USD', new Date(2026, 10, 21), fetchFalso);
+    assert.deepEqual(r, { moeda: 'USD', venda: 5.8889, compra: 5.8883, paridadeUSD: 1, data: '2026-11-19', fonte: 'PTAX venda USD · BCB' });
+  });
+
+  test('euro: usa a paridade de venda (US$ por €) e ignora boletins intermediários', async () => {
+    const fetchFalso = async () => ({
+      ok: true,
+      json: async () => ({ value: [
+        { paridadeVenda: 1.0967, cotacaoCompra: 6.3702, cotacaoVenda: 6.372, dataHoraCotacao: '2026-11-18 13:08:44', tipoBoletim: 'Fechamento' },
+        { paridadeVenda: 1.0999, cotacaoCompra: 6.50, cotacaoVenda: 6.51, dataHoraCotacao: '2026-11-19 11:00:00', tipoBoletim: 'Intermediário' },
+        { paridadeVenda: 1.0982, cotacaoCompra: 6.4659, cotacaoVenda: 6.4672, dataHoraCotacao: '2026-11-19 13:04:18', tipoBoletim: 'Fechamento' }
+      ] })
+    });
+    const r = await buscarPtax('EUR', new Date(2026, 10, 21), fetchFalso);
+    assert.equal(r.venda, 6.4672);
+    assert.equal(r.paridadeUSD, 1.0982);
+    assert.equal(r.data, '2026-11-19');
+  });
+
+  test('aceita o rótulo "Fechamento PTAX" (endpoint por dia)', async () => {
+    const r = await buscarPtax('EUR', new Date(), async () => ({ ok: true, json: async () => ({ value: [
+      { paridadeVenda: 1.0982, cotacaoCompra: 6.4659, cotacaoVenda: 6.4672, dataHoraCotacao: '2026-11-19 13:04:18', tipoBoletim: 'Fechamento PTAX' }
+    ] }) }));
+    assert.equal(r.venda, 6.4672);
+  });
+
+  test('ignora o boletim "Fechamento Interbancário"', async () => {
+    const r = await buscarPtax('USD', new Date(), async () => ({ ok: true, json: async () => ({ value: [
+      { paridadeVenda: 1, cotacaoCompra: 5.88, cotacaoVenda: 5.8889, dataHoraCotacao: '2026-11-19 13:04:18', tipoBoletim: 'Fechamento' },
+      { paridadeVenda: 1, cotacaoCompra: 5.95, cotacaoVenda: 5.96, dataHoraCotacao: '2026-11-19 18:00:00', tipoBoletim: 'Fechamento Interbancário' }
+    ] }) }));
+    assert.equal(r.venda, 5.8889);
+  });
+
+  test('erro 500 com corpo que não é JSON e falta de rede viram mensagens legíveis', async () => {
+    await assert.rejects(buscarPtax('USD', new Date(), async () => ({ ok: true, json: async () => { throw new SyntaxError('x'); } })), /formato inesperado/);
+    await assert.rejects(buscarPtax('USD', new Date(), async () => { throw new TypeError('Failed to fetch'); }), /Sem conexão/);
   });
 
   test('erro do BCB vira exceção legível', async () => {
-    await assert.rejects(buscarPtax(new Date(), async () => ({ ok: false, status: 503 })), /BCB respondeu 503/);
-    await assert.rejects(buscarPtax(new Date(), async () => ({ ok: true, json: async () => ({ value: [] }) })), /não retornou cotação/);
+    await assert.rejects(buscarPtax('USD', new Date(), async () => ({ ok: false, status: 503 })), /BCB respondeu 503/);
+    await assert.rejects(buscarPtax('EUR', new Date(), async () => ({ ok: true, json: async () => ({ value: [] }) })), /não retornou cotação/);
   });
 });

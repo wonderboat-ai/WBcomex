@@ -48,7 +48,33 @@ export const REGRAS_2026 = Object.freeze({
   }),
 
   // Data em que as alíquotas de NCM (data/ncm.js) foram lidas.
-  aliquotasNcmLidasEm: '2026-11-20'
+  aliquotasNcmLidasEm: '2026-11-20',
+
+  // Regime padrão de uma simulação nova (a empresa informou estar no Simples híbrido em 21/11/2026).
+  regimePadrao: 'simples-hibrido',
+
+  // Regimes do comprador. Em 2026 os dois têm o MESMO custo de importação; a diferença começa em 2027.
+  regimesTributarios: Object.freeze({
+    simples: Object.freeze({
+      rotulo: 'Simples Nacional (tudo no DAS)',
+      efeito2026: 'Todo tributo da importação é custo: II, IPI, PIS/COFINS-Importação e Siscomex são pagos fora do DAS sem crédito (LC 123/2006, art. 13 §1º, XII, e art. 23), e o ICMS-importação também (art. 13 §1º, XIII).'
+    }),
+    'simples-hibrido': Object.freeze({
+      rotulo: 'Simples híbrido (IBS/CBS fora do DAS)',
+      efeito2026: 'Em 2026 o custo da importação é o mesmo do Simples puro: os optantes do Simples estão fora das alíquotas-teste de CBS/IBS de 2026 (LC 214/2025, art. 348, III, "c") e a opção pelo regime regular produz efeitos a partir de 01/01/2027.',
+      efeito2027: 'A partir de 01/01/2027, a CBS e o IBS pagos na importação viram crédito (LC 214/2025, art. 78); PIS/COFINS deixam de existir e o IPI muda. Essas regras entram em regras-2027.js quando a alíquota da CBS for fixada: o TCU calculou 11,3% (Acórdão 2.933/2026) e falta a resolução do Senado.',
+      prazo: 'Cancelamento da opção: de 03/11 a 20/12/2026, irretratável (Resolução CGSN 194/2026).'
+    })
+  }),
+
+  // Preço de venda: alíquota do DAS para revenda de mercadoria de importação própria.
+  dasRevendaImportacao: 'Revenda de importação própria: o optante é equiparado a industrial para o IPI e a receita vai para o Anexo II do Simples (LC 123/2006, art. 18 §4º, II; Resolução CGSN 140/2018, art. 25 §1º; ADI RFB 1/2018). Use a alíquota efetiva informada pelo contador.',
+
+  fontesRegimes: Object.freeze([
+    'https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/setembro/simples-nacional-2027-entenda-os-novos-prazos-e-faca-sua-escolha-com-consciencia-e-tranquilidade',
+    'https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp214.htm',
+    'https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp123.htm'
+  ])
 });
 
 export const UFS = Object.freeze([
