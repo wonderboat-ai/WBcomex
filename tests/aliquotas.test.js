@@ -25,41 +25,41 @@ describe('dados oficiais (data/aliquotas-oficiais.json)', () => {
   });
 });
 
-describe('II e IPI das 8 NCMs da SPEC batem com a tabela atual (exceto onde há exceção menor)', () => {
+describe('II e IPI das 8 NCMs da SPEC', () => {
+  // Diferença conhecida: 8544.42.00 tem LETEC de 8% (Anexo V), que prevalece sobre os 16% do Anexo II.
+  const DIFERE = { '8544.42.00': 0.08 };
   for (const n of NCMS) {
     test(n.ncm, () => {
       const ii = resolverII(dados, n.ncm, HOJE);
       const ipi = resolverIPI(dados, n.ncm);
-      assert.ok(perto(ii.aliquota, n.ii), `II oficial ${ii.aliquota} x tabela ${n.ii}`);
+      assert.ok(perto(ii.aliquota, DIFERE[n.ncm] ?? n.ii), `II oficial ${ii.aliquota} x tabela ${n.ii}`);
       assert.ok(perto(ipi.aliquota, n.ipi), `IPI oficial ${ipi.aliquota} x tabela ${n.ipi}`);
     });
   }
-  test('as alíquotas do fixture conferem com as oficiais sugeridas', () => {
-    for (const it of fixture.entrada.itens) {
-      assert.ok(perto(resolverII(dados, it.ncm, HOJE).aliquota, it.ii), `II ${it.ncm}`);
-      assert.ok(perto(resolverIPI(dados, it.ncm).aliquota, it.ipi), `IPI ${it.ncm}`);
-    }
-  });
 });
 
-describe('regra conservadora do II', () => {
+describe('regra de prevalência (nota oficial da planilha do MDIC)', () => {
+  test('o texto da nota está gravado nos dados, com a aba de origem', () => {
+    assert.match(dados.tec.prevalencia.texto, /Anexos IV, V, VI, VIII, IX e X têm prevalência sobre as constantes dos Anexos I e II/);
+    assert.match(dados.tec.prevalencia.aba, /Anexo X/);
+  });
   test('9014.80.10: LEBIT/BK 20% (Res. Gecex 852) prevalece sobre a TEC 12,6%', () => {
     const r = resolverII(dados, '9014.80.10', HOJE);
     assert.ok(perto(r.aliquota, 0.2));
     assert.equal(r.origem.anexo, 'VI');
     assert.match(r.origem.ato, /852/);
-    assert.equal(r.menores.length, 1);
+    assert.equal(r.prevaleceu, true);
   });
-  test('8544.42.00: sugere 16% (Anexo II) e aponta a LETEC de 8% como menor, sem aplicar', () => {
+  test('8544.42.00: LETEC 8% (Anexo V, Res. Gecex 318) prevalece sobre o Anexo II 16%', () => {
     const r = resolverII(dados, '8544.42.00', HOJE);
-    assert.ok(perto(r.aliquota, 0.16));
-    assert.equal(r.origem.anexo, 'II');
-    assert.equal(r.menores.length, 1);
-    assert.equal(r.menores[0].anexo, 'V');
-    assert.ok(perto(r.menores[0].aliquota, 0.08));
-    assert.match(r.menores[0].ato, /318/);
+    assert.ok(perto(r.aliquota, 0.08));
+    assert.equal(r.origem.anexo, 'V');
+    assert.match(r.origem.ato, /318/);
+    assert.ok(perto(r.base.aliquota, 0.16));
+    assert.equal(r.prevaleceu, true);
+    assert.equal(r.menores.length, 0);
   });
-  test('8517.62.59: LEBIT 20% para a NCM inteira; o Ex 1 a 12,6% vira alerta', () => {
+  test('8517.62.59: LEBIT 20% para a NCM inteira; o Ex 1 a 12,6% vira alerta, não é aplicado', () => {
     const r = resolverII(dados, '8517.62.59', HOJE);
     assert.ok(perto(r.aliquota, 0.2));
     assert.equal(r.exs.length, 1);
@@ -70,12 +70,34 @@ describe('regra conservadora do II', () => {
   test('8525.89.29: Ex 15/16 (desabastecimento, com quota) não é aplicado', () => {
     const r = resolverII(dados, '8525.89.29', HOJE);
     assert.ok(perto(r.aliquota, 0.2));
+    assert.equal(r.prevaleceu, false);
     assert.ok(r.exs.every((x) => x.quota));
+  });
+  test('sem exceção: usa o Anexo II (8517.62.99, 18%)', () => {
+    const r = resolverII(dados, '8517.62.99', HOJE);
+    assert.ok(perto(r.aliquota, 0.18));
+    assert.equal(r.origem.anexo, 'II');
   });
   test('vigência: exceção ainda não iniciada não vale e aparece como futura', () => {
     const r = resolverII(dados, '9014.80.10', '2026-01-15'); // LEBIT 852 começa em 2026-02-06
     assert.ok(perto(r.aliquota, 0.126));
     assert.equal(r.futuras.length, 1);
+  });
+  test('Anexo XI (LETEC+) fora da nota: só substitui se for maior, e avisa', () => {
+    const sintetico = {
+      tec: { anexos: { II: 'Anexo II', XI: 'LETEC+' } },
+      ncm: { 11111111: [10, '', 10, '', 5], 22222222: [10, '', 10, '', 5] },
+      excecoes: {
+        11111111: [['XI', '-', 20, '2026-01-01', null, 'Res. X', '', '']],
+        22222222: [['XI', '-', 2, '2026-01-01', null, 'Res. Y', '', '']]
+      }
+    };
+    const maiorXI = resolverII(sintetico, '11111111', HOJE);
+    assert.ok(perto(maiorXI.aliquota, 0.2));
+    assert.ok(maiorXI.avisos.some((a) => /não cita este anexo/.test(a)));
+    const menorXI = resolverII(sintetico, '22222222', HOJE);
+    assert.ok(perto(menorXI.aliquota, 0.1));
+    assert.equal(menorXI.menores[0].anexo, 'XI');
   });
   test('NCM inexistente devolve null', () => {
     assert.equal(resolverII(dados, '1234.56.78', HOJE), null);
@@ -89,6 +111,11 @@ describe('IPI', () => {
     assert.ok(perto(r.aliquota, 0.13));
     assert.equal(r.exs[0].ex, '1');
     assert.ok(perto(r.exs[0].aliquota, 0.0975));
+  });
+  test('Ex da TIPI com a coluna NCM vazia pertence à NCM de cima (8507.60.00, Ex 01 a 15%)', () => {
+    const r = resolverIPI(dados, '8507.60.00');
+    assert.ok(perto(r.aliquota, 0.1125));
+    assert.ok(r.exs.some((x) => x.ex === '1' && perto(x.aliquota, 0.15) && /smartphones/.test(x.descricao)));
   });
   test('NT vira 0 e é sinalizado', () => {
     const nt = Object.entries(dados.ncm).find(([, l]) => l[4] === 'NT');

@@ -10,9 +10,9 @@ Uso:
         --tec-url URL_DO_XLSX --tec-atualizada-em AAAA-MM-DD \
         --tipi-url URL_DO_XLSX --tipi-arquivo "NOME DO ARQUIVO" --tipi-atualizada-em AAAA-MM-DD
 
-O script só copia o que está nas planilhas, com fonte, arquivo, data e sha256.
-Não decide qual exceção prevalece: isso fica no app (assets/js/aliquotas.js), que mostra
-todas as alíquotas candidatas com anexo e ato.
+O script só copia o que está nas planilhas, com fonte, arquivo, data e sha256, inclusive o texto
+da nota oficial sobre qual anexo prevalece (aba do Anexo X). A regra é aplicada no app
+(assets/js/aliquotas.js).
 """
 
 import argparse
@@ -114,9 +114,24 @@ def nota_atualizacao(ws):
     return ''
 
 
+def nota_prevalencia(wb):
+    """Texto oficial sobre a prevalência entre anexos (hoje, nota 1 da aba do Anexo X)."""
+    for ws in wb.worksheets:
+        for i, row in enumerate(linhas(ws)):
+            if i > 6:
+                break
+            for c in row:
+                t = txt(c)
+                if 'prevalência' in t.lower():
+                    trecho = next((x.strip() for x in t.split('\n') if 'prevalência' in x.lower()), t)
+                    return {'texto': trecho, 'aba': ws.title}
+    return None
+
+
 def ler_tec(caminho):
     wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
     abas = {ws.title: ws for ws in wb.worksheets}
+    prevalencia = nota_prevalencia(wb)
 
     def aba(prefixo):
         for nome, ws in abas.items():
@@ -209,30 +224,45 @@ def ler_tec(caminho):
                 quota,
                 descricao[:220] if ex != '-' else '',
             ])
-    return ncm, excecoes, atualizacoes
+    return ncm, excecoes, atualizacoes, prevalencia
 
 
 def ler_tipi(caminho):
+    """IPI por NCM. Colunas lidas pelo cabeçalho (NCM, EX, DESCRIÇÃO, ALÍQUOTA). Linhas de Ex que
+    vêm com a coluna NCM vazia pertencem à última NCM de 8 dígitos lida."""
     wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
     ws = wb.worksheets[0]
     ipi = {}
     ipi_ex = {}
-    cab_visto = False
+    col = None
+    ultima = None
     for row in linhas(ws):
-        if not cab_visto:
-            if norm(row[0] if row else '') == 'ncm':
-                cab_visto = True
+        if col is None:
+            cab = [norm(x) for x in row]
+            if cab and cab[0] == 'ncm':
+                def achar(prefixo):
+                    return next(i for i, k in enumerate(cab) if k.startswith(prefixo))
+                col = {'ncm': 0, 'ex': achar('ex'), 'desc': achar('descricao'), 'aliq': achar('aliquota')}
             continue
-        c = chave_ncm(row[0])
-        if not c or len(row) < 4:
+        if len(row) <= max(col.values()):
             continue
-        ex = txt(row[1])
-        bruto = txt(row[3]).upper()
+        bruto_ncm = txt(row[col['ncm']])
+        c = chave_ncm(bruto_ncm)
+        ex = txt(row[col['ex']])
+        if c:
+            ultima = c
+        elif not bruto_ncm and ex and ultima:
+            c = ultima  # Ex sem NCM na coluna A: pertence à NCM de cima
+        else:
+            if bruto_ncm:
+                ultima = None  # nível acima de 8 dígitos: não herda
+            continue
+        bruto = txt(row[col['aliq']]).upper()
         valor = 'NT' if bruto == 'NT' else numero(bruto)
         if valor is None:
             continue
         if ex:
-            ipi_ex.setdefault(c, []).append([ex, valor, txt(row[2])[:220]])
+            ipi_ex.setdefault(c, []).append([ex, valor, txt(row[col['desc']])[:220]])
         else:
             ipi[c] = valor
     if len(ipi) < 9000:
@@ -252,7 +282,9 @@ def main():
     ap.add_argument('--baixado-em', default=dt.date.today().isoformat())
     a = ap.parse_args()
 
-    tec, excecoes, atualizacoes = ler_tec(a.tec)
+    tec, excecoes, atualizacoes, prevalencia = ler_tec(a.tec)
+    if not prevalencia:
+        raise SystemExit('Nota de prevalência entre anexos não encontrada na planilha da TEC: conferir antes de publicar.')
     ipi, ipi_ex = ler_tipi(a.tipi)
 
     # Tabela compacta: ncm -> [tec, bitbk, anexoII, fundII, ipi]
@@ -275,6 +307,7 @@ def main():
             'arquivo': a.tec_url,
             'atualizadaEm': a.tec_atualizada_em,
             'atualizacoes': atualizacoes,
+            'prevalencia': prevalencia,
             'anexos': {'I': 'TEC', 'II': 'Tarifas brasileiras diferentes da TEC', **ANEXOS_EXCECAO},
             'sha256': sha256(a.tec),
             'baixadoEm': a.baixado_em,

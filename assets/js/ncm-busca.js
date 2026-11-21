@@ -22,6 +22,15 @@ export function formatarCodigo(c) {
 
 const limparDescricao = (s) => String(s).replace(/<[^>]+>/g, '').replace(/^[\s\-–—]+/, '').replace(/[:;.]\s*$/, '').trim();
 
+// Sugestões de busca: palavra do dia a dia → palavra usada na nomenclatura. Nunca aponta para NCM;
+// só amplia a procura no texto oficial.
+export const SINONIMOS = Object.freeze({
+  bateria: ['acumulador'], baterias: ['acumulador'], recarregavel: ['acumulador'], recarregaveis: ['acumulador'],
+  cabo: ['condutor'], cabos: ['condutor'], fio: ['condutor'], fios: ['condutor'],
+  camera: ['camara'], cameras: ['camara'],
+  tela: ['monitor'], display: ['monitor'], monitor: ['monitor']
+});
+
 // Palavras muito comuns que não ajudam a achar a NCM.
 const IGNORAR = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'ou', 'para', 'com', 'em', 'a', 'o', 'as', 'os', 'por', 'um', 'uma', 'kit', 'mm', 'cm', 'm']);
 
@@ -78,36 +87,44 @@ const PESO_NIVEL = [3, 2, 1.5, 1, 0.5];
  * Pesquisa por código (prefixo) ou por texto. No texto, cada palavra soma pontos conforme onde
  * aparece: na descrição da própria NCM, nas notas da tabela do app ou nos níveis acima (quanto
  * mais perto, mais vale). Ordena por quantidade de palavras encontradas e depois por pontos.
- * @returns {{ codigo: string, ncm: string, descricao: string, caminho: string[], pontos: number, termos: number }[]}
+ * @returns {{ codigo: string, ncm: string, descricao: string, caminho: string[], pontos: number, termos: number, parcial: boolean }[]}
  */
 export function buscarNcm(indice, consulta, limite = 30) {
   const q = String(consulta ?? '').trim();
   if (!q) return [];
-  const digitos = q.replace(/[\s.]/g, '');
   let achados;
-  if (/^\d{2,8}$/.test(digitos)) {
-    achados = indice.entradas
-      .filter((e) => e.codigo.startsWith(digitos))
-      .map((e) => ({ e, pontos: 100 - (e.codigo.length - digitos.length), termos: 1 }));
+  // Código: só dígitos e separadores (pontos, espaços, hífens, barras). Aceita HS de 10 dígitos.
+  if (/^[\d\s.\-\/]+$/.test(q) && /\d{2}/.test(q.replace(/\D/g, ''))) {
+    // Sem resultado com 8 dígitos (ex.: HTS americano 8517.62.0090), recua até 6 (nível do SH).
+    let digitos = q.replace(/\D/g, '').slice(0, 8);
+    achados = [];
+    while (digitos.length >= 2) {
+      const d = digitos;
+      achados = indice.entradas.filter((e) => e.codigo.startsWith(d)).map((e) => ({ e, pontos: 100 - (e.codigo.length - d.length), termos: 1 }));
+      if (achados.length || digitos.length <= 6) break;
+      digitos = digitos.slice(0, -1);
+    }
   } else {
     const termos = [...new Set(normalizarTexto(q).split(' ').filter((t) => t.length > 1 && !IGNORAR.has(t)))];
     if (!termos.length) return [];
     const frase = termos.join(' ');
+    const variantes = (t) => [t, ...(SINONIMOS[t] || [])];
+    const noTexto = (txt, t) => Math.max(...variantes(t).map((v) => palavraNoTexto(txt, v)));
     achados = [];
     for (const e of indice.entradas) {
       let pontos = 0;
       let encontrados = 0;
       for (const t of termos) {
-        let melhor = palavraNoTexto(e.textoProprio, t) * 4;
-        melhor = Math.max(melhor, palavraNoTexto(e.textoNotas, t) * 3);
-        e.textosNiveis.forEach((txt, i) => { melhor = Math.max(melhor, palavraNoTexto(txt, t) * PESO_NIVEL[i]); });
+        let melhor = noTexto(e.textoProprio, t) * 4;
+        melhor = Math.max(melhor, noTexto(e.textoNotas, t) * 3);
+        e.textosNiveis.forEach((txt, i) => { melhor = Math.max(melhor, noTexto(txt, t) * PESO_NIVEL[i]); });
         if (melhor > 0) { encontrados += 1; pontos += melhor; }
       }
       if (!encontrados) continue;
       if (termos.length > 1) {
         if (e.textoProprio.includes(frase) || e.textoNotas.includes(frase)) pontos += 6;
         // todas as palavras numa mesma descrição (própria, notas ou um nível acima): bônus pela proximidade
-        const todasEm = (txt) => termos.every((t) => palavraNoTexto(txt, t) > 0);
+        const todasEm = (txt) => termos.every((t) => noTexto(txt, t) > 0);
         let bonus = todasEm(e.textoProprio) ? 8 : todasEm(e.textoNotas) ? 6 : 0;
         e.textosNiveis.forEach((txt, i) => { if (todasEm(txt)) bonus = Math.max(bonus, 2 * PESO_NIVEL[i]); });
         pontos += bonus;
@@ -116,16 +133,15 @@ export function buscarNcm(indice, consulta, limite = 30) {
       achados.push({ e, pontos, termos: encontrados });
     }
   }
-  // Com 2 ou 3 palavras, mostra só quem achou o máximo de palavras (evita ruído de uma palavra solta);
-  // com 4 ou mais, aceita uma a menos.
+  // Primeiro quem achou mais palavras; os que acharam menos ficam abaixo, marcados como parciais.
+  // Com 2 ou mais palavras, resultados com menos da metade das palavras do melhor não entram.
   const maxTermos = achados.reduce((m, x) => Math.max(m, x.termos), 0);
-  const nTermos = /^\d/.test(digitos) ? 1 : normalizarTexto(q).split(' ').filter((t) => t.length > 1 && !IGNORAR.has(t)).length;
-  const minimo = maxTermos >= 2 ? maxTermos - (nTermos >= 4 ? 1 : 0) : 1;
+  const minimo = maxTermos >= 2 ? Math.max(1, Math.ceil(maxTermos / 2)) : 1;
   return achados
     .filter((x) => x.termos >= minimo)
     .sort((a, b) => b.termos - a.termos || b.pontos - a.pontos || a.e.codigo.localeCompare(b.e.codigo))
     .slice(0, limite)
-    .map(({ e, pontos, termos }) => ({ codigo: e.codigo, ncm: formatarCodigo(e.codigo), descricao: e.descricao, caminho: e.caminho, pontos, termos }));
+    .map(({ e, pontos, termos }) => ({ codigo: e.codigo, ncm: formatarCodigo(e.codigo), descricao: e.descricao, caminho: e.caminho, pontos, termos, parcial: termos < maxTermos }));
 }
 
 /** 2 = palavra inteira, 1 = começo de palavra (ex.: "transdut" acha "transdutores"), 0 = não achou. */

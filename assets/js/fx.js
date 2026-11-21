@@ -56,20 +56,22 @@ export function urlPtax(moeda = 'USD', ate = new Date(), dias = 15) {
 export async function buscarPtax(moeda = 'USD', ate = new Date(), fetchFn = globalThis.fetch, tempoLimiteMs = 8000) {
   const controle = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = controle ? setTimeout(() => controle.abort(), tempoLimiteMs) : null;
-  let resposta;
-  try {
-    resposta = await fetchFn(urlPtax(moeda, ate), { headers: { Accept: 'application/json' }, signal: controle?.signal });
-  } catch (e) {
-    throw new Error(e?.name === 'AbortError' ? 'BCB não respondeu a tempo.' : 'Sem conexão com o BCB.');
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-  if (!resposta.ok) throw new Error(`BCB respondeu ${resposta.status}.`);
   let json;
   try {
-    json = await resposta.json(); // o erro 500 da API vem como '/*{...}*/', que não é JSON
-  } catch {
-    throw new Error('Resposta do BCB em formato inesperado.');
+    let resposta;
+    try {
+      resposta = await fetchFn(urlPtax(moeda, ate), { headers: { Accept: 'application/json' }, signal: controle?.signal });
+    } catch (e) {
+      throw new Error(e?.name === 'AbortError' ? 'BCB não respondeu a tempo.' : 'Sem conexão com o BCB.');
+    }
+    if (!resposta.ok) throw new Error(`BCB respondeu ${resposta.status}.`);
+    try {
+      json = await resposta.json(); // o erro 500 da API vem como '/*{...}*/', que não é JSON
+    } catch (e) {
+      throw new Error(e?.name === 'AbortError' || controle?.signal?.aborted ? 'BCB não respondeu a tempo.' : 'Resposta do BCB em formato inesperado.');
+    }
+  } finally {
+    if (timer) clearTimeout(timer); // o tempo limite cobre também a leitura do corpo
   }
   const lista = (Array.isArray(json?.value) ? json.value : [])
     .filter((c) => /^Fechamento( PTAX)?$/.test(c.tipoBoletim ?? 'Fechamento') && Number.isFinite(c.cotacaoVenda)) // não 'Fechamento Interbancário'

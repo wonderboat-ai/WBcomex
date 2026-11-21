@@ -157,6 +157,14 @@ describe('PTAX (fx.js)', () => {
     await assert.rejects(buscarPtax('USD', new Date(), async () => { throw new TypeError('Failed to fetch'); }), /Sem conexão/);
   });
 
+  test('o tempo limite também vale para a leitura do corpo da resposta', async () => {
+    const lento = async (url, { signal }) => ({
+      ok: true,
+      json: () => new Promise((_, rejeitar) => signal.addEventListener('abort', () => rejeitar(Object.assign(new Error('x'), { name: 'AbortError' }))))
+    });
+    await assert.rejects(buscarPtax('USD', new Date(), lento, 50), /não respondeu a tempo/);
+  });
+
   test('erro do BCB vira exceção legível', async () => {
     await assert.rejects(buscarPtax('USD', new Date(), async () => ({ ok: false, status: 503 })), /BCB respondeu 503/);
     await assert.rejects(buscarPtax('EUR', new Date(), async () => ({ ok: true, json: async () => ({ value: [] }) })), /não retornou cotação/);

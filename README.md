@@ -50,6 +50,8 @@ O comando roda `node --test`. `tests/calc.test.js` carrega cada fixture de `test
 
 Outros testes cobrem a busca de NCM, a resolução das alíquotas oficiais, a PTAX (com respostas simuladas), o câmbio em euro, o regime híbrido, abrir/salvar JSON e o CSV. O workflow `.github/workflows/test.yml` roda tudo em todo push e pull request.
 
+Mudanças em relação à SPEC v1: ver o adendo no fim de [`SPEC.md`](./SPEC.md).
+
 ## Estrutura
 
 ```
@@ -84,10 +86,12 @@ Nenhuma alíquota fica no código: tudo sai de `data/`, com fonte e data.
 - **Dados oficiais (`data/aliquotas-oficiais.json`):**
   - **II:** planilha "Tarifas vigentes" do MDIC/Camex com os Anexos da Resolução Gecex nº 272/2021, atualizada em 11/11/2026. Anexo I traz a TEC; Anexo II, a alíquota aplicada pelo Brasil; os Anexos IV, V (LETEC), VI (LEBIT/BK), VIII, IX, X e XI (LETEC+) trazem as exceções temporárias.
   - **IPI:** TIPI da Receita Federal ("TIPI 2022 – Atualizada ADE 001-2026", de 13/02/2026). "NT" vira 0.
-- **Regra conservadora do II:** não consegui ler no texto oficial (Diário Oficial inacessível a partir do ambiente de desenvolvimento) a regra que diz qual anexo prevalece. Por segurança, o app sugere a **maior** alíquota entre as que valem para a NCM inteira na data da operação (Anexo II ou TEC, e exceções sem "Ex" e sem quota).
-  - Quando existe exceção menor, a tela avisa com o anexo e o ato. Exemplo: 8544.42.00, sugerido 16% (Anexo II), com LETEC de 8% vigente pela Res. Gecex 318.
+- **Regra de prevalência do II (nota oficial da planilha do MDIC, gravada em `tec.prevalencia`):** "as alterações temporárias do Imposto de Importação que constam dos Anexos IV, V, VI, VIII, IX e X têm prevalência sobre as constantes dos Anexos I e II, enquanto durar a alteração tarifária".
+  - Exceção desses anexos, vigente na data da operação, sem "Ex" e sem quota, substitui o Anexo II (ou a TEC). Exemplo: 8544.42.00 fica com **8%** (LETEC, Res. Gecex 318), e não com os 16% do Anexo II.
+  - Mais de uma exceção vigente na mesma NCM: usa a maior e avisa.
+  - O Anexo XI (LETEC+) não está na nota: só é usado se for maior; se for menor, vira alerta.
   - Ex-tarifário e quota nunca são aplicados sozinhos. Exemplo: o Ex 1 da 8517.62.59, a 12,6%, só gera alerta.
-- **Tabela do app (`data/ncm.js`):** as 8 NCMs da SPEC v1, lidas em buscadorncm.com.br (não oficial) em 20/11/2026. Ficam como reserva se os dados oficiais não carregarem e para as observações (ex.: alerta de homologação ANATEL no gateway Wi‑Fi). Nas 8 NCMs, a alíquota oficial sugerida é igual à da tabela.
+- **Tabela do app (`data/ncm.js`):** as 8 NCMs da SPEC v1, lidas em buscadorncm.com.br (não oficial) em 20/11/2026. Ficam como reserva se os dados oficiais não carregarem e para as observações (ex.: alerta de homologação ANATEL no gateway Wi‑Fi). Nas 8 NCMs, a alíquota oficial é igual à da tabela, menos o II da 8544.42.00 (oficial 8% pela LETEC; a tabela tinha 16%).
 - **Siscomex (Portaria ME 4.131/2021):** R$ 115,67 por declaração mais o valor de cada adição. 1 adição = R$ 154,23 e 5 adições = R$ 285,34, conferidos. As faixas a partir da 6ª adição estão marcadas como "a confirmar na Portaria ME 4.131/2021".
 - **NCM inexistente na nomenclatura vigente:** a tela aponta, e II e IPI ficam em branco e destacados. O app nunca supõe alíquota.
 - **NCM personalizada:** pela tela "Pesquisar NCM" dá para cadastrar uma NCM com fonte e data de leitura. Ela fica só no `localStorage` do navegador e prevalece sobre a oficial. Serve para Ex-tarifário ou alíquota confirmada pelo despachante.
@@ -127,9 +131,10 @@ As planilhas ficam nas páginas indicadas em `data/aliquotas-oficiais.json` (cam
 - **Simples híbrido (IBS/CBS fora do DAS, LC 214/2025):**
   - **Em 2026:** o custo da importação é o mesmo do Simples puro. Os optantes do Simples estão fora das alíquotas-teste de CBS/IBS (art. 348, III, "c"), e a opção só produz efeitos a partir de 01/01/2027.
   - **A partir de 2027:** a CBS e o IBS pagos na importação viram crédito (art. 78), PIS e COFINS deixam de existir e o IPI muda.
-  - **Prazo:** a opção pode ser cancelada de 03/11 a 20/12/2026, de forma irretratável (Resolução CGSN 194/2026).
-- **Regras de 2027:** só entram em `data/regras-2027.js` quando a alíquota da CBS for fixada. O TCU calculou 11,3% (Acórdão 2.933/2026); falta a resolução do Senado. Com data de operação em 2027, a tela mostra um alerta de que o resultado não vale.
-- **DAS na venda:** na revenda de importação própria, o optante é equiparado a industrial para o IPI, e a receita vai para o Anexo II do Simples (Resolução CGSN 140/2018, art. 25 §1º). Use a alíquota efetiva informada pelo contador.
+  - **Prazo:** a opção feita de 01/09 a 30/10/2026 vale a partir de 01/01/2027 e pode ser cancelada de 03/11 a 20/12/2026 (Receita Federal; Resolução CGSN 194/2026).
+- **Regras de 2027:** só entram em `data/regras-2027.js` quando a alíquota da CBS for fixada pelo Senado (o TCU enviou o cálculo de 11,3%, Acórdão 2.933/2026). Com data de operação em 2027, a tela mostra um alerta de que o resultado não vale.
+- **DAS na venda:** na revenda de importação própria, segundo a Receita (Perguntas e Respostas do Simples) e a Resolução CGSN 140/2018, art. 25 §1º, o importador é equiparado a industrial para o IPI e a receita vai para o Anexo II. Confirme com o contador e use a alíquota efetiva que ele informar.
+- **Fontes dos textos do regime:** ficam em `data/regras-2026.js` (`fontesRegimes`), com link e data de leitura, e aparecem na tela.
 
 ## Salvar, abrir, CSV e impressão
 

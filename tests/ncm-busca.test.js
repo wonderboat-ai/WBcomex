@@ -50,10 +50,22 @@ describe('pesquisa', () => {
     assert.equal(buscarNcm(indice, 'transdutor sonar')[0].ncm, '9014.80.10');
     assert.equal(buscarNcm(indice, 'camera maritima')[0].ncm, '8525.89.19');
   });
-  test('sem ruído de palavra solta: "câmera marítima térmica" não traz trocador de calor', () => {
+  test('resultado completo primeiro; palavra solta fica abaixo, marcada como parcial', () => {
     const r = buscarNcm(indice, 'camera maritima termica');
     assert.equal(r[0].ncm, '8525.89.19');
-    assert.ok(!r.some((x) => x.ncm.startsWith('8419')), r.map((x) => x.ncm).join(', '));
+    assert.equal(r[0].parcial, false);
+    const trocador = r.find((x) => x.ncm.startsWith('8419'));
+    assert.ok(!trocador || trocador.parcial, 'trocador de calor, se aparecer, é parcial');
+  });
+  test('"bateria de lítio recarregável" mostra o acumulador de íon de lítio (8507.60.00)', () => {
+    const r = buscarNcm(indice, 'bateria de lítio recarregável', 40);
+    assert.ok(r.some((x) => x.ncm === '8507.60.00'), r.map((x) => x.ncm).join(', '));
+  });
+  test('código com hífen, barra ou HS de 10 dígitos é lido como código', () => {
+    assert.equal(buscarNcm(indice, '8517-62-59')[0].ncm, '8517.62.59');
+    assert.equal(buscarNcm(indice, '9014.80.1000')[0].ncm, '9014.80.10');
+    assert.equal(buscarNcm(indice, '8517620090')[0].ncm.slice(0, 7), '8517.62');
+    assert.ok(buscarNcm(indice, '8517/62').every((x) => x.codigo.startsWith('851762')));
   });
   test('palavras que não estão na nomenclatura não zeram a busca', () => {
     assert.ok(buscarNcm(indice, 'cabo condutores conexão').length > 0);

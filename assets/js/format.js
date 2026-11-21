@@ -25,7 +25,7 @@ const TRACO = '—';
 export function parseNumero(texto) {
   if (texto === null || texto === undefined) return null;
   if (typeof texto === 'number') return Number.isFinite(texto) ? texto : NaN;
-  let s = String(texto).trim().replace(/\s|\u00a0/g, '').replace(/^(R\$|US\$|\$)/i, '').replace(/%$/, '');
+  let s = String(texto).trim().replace(/\s|\u00a0/g, '').replace(/^(R\$|US\$|\$|€|EUR)/i, '').replace(/%$/, '');
   if (s === '') return null;
   let negativo = false;
   if (s.startsWith('-')) { negativo = true; s = s.slice(1); }

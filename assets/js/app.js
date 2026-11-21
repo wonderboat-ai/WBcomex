@@ -21,6 +21,12 @@ const PLACEHOLDERS_DESPESA = ['Desembaraço do courier', 'Despachante', 'Armazen
 let estado = S.carregarRascunho(REGRAS) ?? S.novaEntrada(REGRAS);
 let personalizadas = S.carregarNcmsPersonalizadas();
 let ncmAplicada = estado.itens.map((it) => chaveNcm(it.ncm)); // NCM cujas alíquotas já foram aplicadas na linha
+let aliqAuto = estado.itens.map(() => ({})); // alíquotas que o app preencheu sozinho, por linha: { ii?, ipi? }
+let linhaFocoNcm = null; // linha que recebe o foco quando o diálogo de NCM fecha
+function resetarMetaLinhas() {
+  ncmAplicada = estado.itens.map((it) => chaveNcm(it.ncm));
+  aliqAuto = estado.itens.map(() => ({}));
+}
 let ultimoResultado = null;
 let mostrarTodosErros = false;
 let siscomexEditando = estado.operacao.siscomexManualBRL != null;
@@ -62,6 +68,7 @@ function carregarDadosNcm() {
       oficiais = ali;
       reconstruirIndice();
       dadosNcmEstado = 'ok';
+      renderFontesRodape();
       preencherAliquotasPendentes();
       atualizar({ salvar: false });
       if ($('#dlg-ncm')?.open) { renderDialogoNcm(); executarBuscaNcm(); }
@@ -112,16 +119,35 @@ function referencia(ncm) {
 /** Depois que os dados oficiais chegam, completa II/IPI que estavam em branco (nunca troca valor digitado). */
 function preencherAliquotasPendentes() {
   estado.itens.forEach((item, i) => {
-    const ref = referencia(item.ncm);
+    const chave = chaveNcm(item.ncm);
+    if (chave.length !== 8) return;
+    if (ncmAplicada[i] !== chave) { aplicarNcm(i); return; } // NCM digitada antes dos dados chegarem
+    const ref = referencia(chave);
     if (!ref) return;
     const tr = $(`#itens-corpo tr[data-i="${i}"]`);
     for (const alvo of ['ii', 'ipi']) {
       if (item[alvo] === null || item[alvo] === undefined) {
         item[alvo] = ref[alvo];
+        aliqAuto[i][alvo] = ref[alvo];
         if (tr) $(`input[data-campo="${alvo}"]`, tr).value = F.paraCampoPct(ref[alvo]);
       }
     }
-    ncmAplicada[i] = chaveNcm(item.ncm);
+  });
+}
+
+/** Mudou a data da operação: troca só as alíquotas que o app tinha preenchido sozinho (vigência das exceções). */
+function reaplicarAliquotasAuto() {
+  estado.itens.forEach((item, i) => {
+    const ref = referencia(item.ncm);
+    if (!ref) return;
+    const tr = $(`#itens-corpo tr[data-i="${i}"]`);
+    for (const alvo of ['ii', 'ipi']) {
+      const auto = aliqAuto[i]?.[alvo];
+      if (auto === undefined || !mesmaAliquota(item[alvo], auto) || mesmaAliquota(ref[alvo], auto)) continue;
+      item[alvo] = ref[alvo];
+      aliqAuto[i][alvo] = ref[alvo];
+      if (tr) $(`input[data-campo="${alvo}"]`, tr).value = F.paraCampoPct(ref[alvo]);
+    }
   });
 }
 
@@ -198,9 +224,14 @@ function aoDigitarCampo(ev) {
       renderFx();
     } else if (caminho === 'operacao.pagamento.cambioPagamento') {
       estado.operacao.pagamento.origemCambioPagamento = 'manual';
+    } else if (caminho === 'operacao.paridadeUSD') {
+      estado.operacao.origemParidade = 'manual';
     }
   }
-  if (caminho === 'operacao.data' && oficiais) renderDialogoNcm();
+  if (caminho === 'operacao.data' && oficiais) {
+    reaplicarAliquotasAuto();
+    renderDialogoNcm();
+  }
   if (caminho === 'precificacao.markupGlobal') {
     sincronizarSlider();
     atualizarPlaceholdersMarkup();
@@ -287,6 +318,7 @@ function aplicarNcm(i, { soSeEncontrar = false } = {}) {
   item.ii = ref ? ref.ii : null;
   item.ipi = ref ? ref.ipi : null;
   ncmAplicada[i] = chave;
+  aliqAuto[i] = ref ? { ii: ref.ii, ipi: ref.ipi } : {};
   const tr = $(`#itens-corpo tr[data-i="${i}"]`);
   if (tr) {
     $('input[data-campo="ii"]', tr).value = F.paraCampoPct(item.ii);
@@ -301,6 +333,7 @@ function aoDigitarItem(ev) {
   const i = Number(el.closest('tr').dataset.i);
   const { campo, tipo } = el.dataset;
   estado.itens[i][campo] = converter(tipo, el.value);
+  if (campo === 'ii' || campo === 'ipi') delete aliqAuto[i]?.[campo];
   if (campo === 'ncm') aplicarNcm(i, { soSeEncontrar: true });
   atualizar();
 }
@@ -341,6 +374,7 @@ function aoClicarItem(ev) {
     if (!ref) return;
     const alvo = btn.dataset.alvo;
     estado.itens[i][alvo] = ref[alvo];
+    aliqAuto[i][alvo] = ref[alvo];
     btn.parentElement.querySelector('input').value = F.paraCampoPct(ref[alvo]);
     atualizar();
     return;
@@ -348,12 +382,17 @@ function aoClicarItem(ev) {
   if (acao === 'duplicar') {
     estado.itens.splice(i + 1, 0, structuredClone(estado.itens[i]));
     ncmAplicada.splice(i + 1, 0, ncmAplicada[i]);
+    aliqAuto.splice(i + 1, 0, { ...aliqAuto[i] });
+    ajustarMemoria('duplicar', i);
   } else if (acao === 'remover') {
     estado.itens.splice(i, 1);
     ncmAplicada.splice(i, 1);
+    aliqAuto.splice(i, 1);
+    ajustarMemoria('remover', i);
     if (!estado.itens.length) {
       estado.itens.push(S.itemVazio());
       ncmAplicada = [''];
+      aliqAuto = [{}];
     }
   }
   renderItens();
@@ -362,9 +401,21 @@ function aoClicarItem(ev) {
   $(`#itens-corpo tr[data-i="${foco}"] input[data-campo="descricao"]`)?.focus();
 }
 
+/** A memória de cálculo aberta acompanha o item quando linhas são removidas ou duplicadas. */
+function ajustarMemoria(acao, i) {
+  const novo = new Set();
+  for (const k of memoriaAberta) {
+    if (acao === 'remover') { if (k !== i) novo.add(k > i ? k - 1 : k); }
+    else novo.add(k > i ? k + 1 : k);
+  }
+  memoriaAberta.clear();
+  novo.forEach((k) => memoriaAberta.add(k));
+}
+
 function adicionarItem() {
   estado.itens.push(S.itemVazio());
   ncmAplicada.push('');
+  aliqAuto.push({});
   renderItens();
   atualizar();
   $(`#itens-corpo tr[data-i="${estado.itens.length - 1}"] input[data-campo="descricao"]`)?.focus();
@@ -407,6 +458,17 @@ function atualizarLinhas(errosPorCampo) {
 
 const p2 = (v) => F.pct(v, 2).replace(',00%', '%');
 
+/** "LETEC (Anexo V), Resolução Gecex nº 318, que prevalece sobre o Anexo II (16%) enquanto vigente". */
+function textoOrigemII(ref) {
+  const r = ref.resII;
+  const o = r.origem;
+  const anexo = o.anexo !== 'I' && o.anexo !== 'II' ? ` (Anexo ${o.anexo})` : '';
+  const prev = r.prevaleceu && r.base && !mesmaAliquota(r.base.aliquota, ref.ii)
+    ? `, que prevalece sobre o ${r.base.anexo === 'II' ? 'Anexo II' : 'Anexo I (TEC)'} (${p2(r.base.aliquota)}) enquanto vigente`
+    : '';
+  return `${o.nome}${anexo}, ${o.ato}${prev}`;
+}
+
 /** Linha de informação abaixo do item: descrição oficial, alíquotas, origem e alertas. */
 function htmlInfoNcm(chave, ref) {
   if (!chave) return '<span>Escolha a NCM na lista, pesquise pela lupa ou digite os 8 dígitos.</span>';
@@ -419,23 +481,28 @@ function htmlInfoNcm(chave, ref) {
     return `${desc}<span class="falta">Sem alíquota de referência.</span> II e IPI ficam em branco até alguém preencher com alíquota confirmada.${carregando} <button type="button" class="btn btn--link" data-acao-ncm="abrir">Adicionar à tabela</button>`;
   }
   const partes = [`<strong>${esc(ref.ncm)}</strong> ${esc(ref.descricao)}`];
+  let observacao = ref.observacao || '';
   if (ref.tipo === 'oficial') {
-    const o = ref.resII.origem;
-    partes.push(`II ${esc(p2(ref.ii))}: ${esc(o.nome)}${o.anexo !== 'I' && o.anexo !== 'II' ? ` (Anexo ${esc(o.anexo)})` : ''}, ${esc(o.ato)}`);
+    partes.push(`II ${esc(p2(ref.ii))}: ${esc(textoOrigemII(ref))}`);
     partes.push(`IPI ${esc(ref.resIPI.nt ? 'NT (0%)' : p2(ref.ipi))}: TIPI`);
-    const menores = ref.resII.menores.filter((x) => x.anexo !== 'I' && x.anexo !== 'II');
-    for (const m of menores) partes.push(`<span class="aviso">⚠ também vigente: ${esc(m.nome)} ${esc(p2(m.aliquota))} (${esc(m.ato)}), confirmar qual prevalece</span>`);
-    for (const x of ref.resII.exs) partes.push(`<span class="aviso">Ex ${esc(x.ex)} do II a ${esc(p2(x.aliquota))}${x.quota ? ' com quota' : ''} (${esc(x.ato)}): ${esc(x.descricao.slice(0, 110))}${x.descricao.length > 110 ? '…' : ''}</span>`);
-    for (const x of ref.resIPI.exs.slice(0, 2)) partes.push(`Ex ${esc(x.ex)} da TIPI a ${esc(x.nt ? 'NT' : p2(x.aliquota))}: ${esc(x.descricao.slice(0, 80))}${x.descricao.length > 80 ? '…' : ''}`);
+    for (const m of ref.resII.menores) partes.push(`<span class="aviso">⚠ também vigente e não aplicada: ${esc(m.nome)} ${esc(p2(m.aliquota))} (${esc(m.ato)})</span>`);
+    for (const a of ref.resII.avisos) partes.push(`<span class="aviso">⚠ ${esc(a)}</span>`);
+    for (const x of ref.resII.exs) partes.push(`<span class="aviso">Ex ${esc(x.ex)} do II a ${esc(p2(x.aliquota))}${x.quota ? ' com quota' : ''} (${esc(x.ato)}), não aplicado: ${esc(x.descricao.slice(0, 110))}${x.descricao.length > 110 ? '…' : ''}</span>`);
+    // Ex da TIPI: primeiro os de alíquota maior que a base (risco de custo maior)
+    const exsIpi = [...ref.resIPI.exs].sort((a, b) => (b.aliquota > ref.ipi) - (a.aliquota > ref.ipi));
+    for (const x of exsIpi.slice(0, 3)) partes.push(`${x.aliquota > ref.ipi ? '<span class="aviso">' : ''}Ex ${esc(x.ex)} da TIPI a ${esc(x.nt ? 'NT' : p2(x.aliquota))}, não aplicado: ${esc(x.descricao.slice(0, 80))}${x.descricao.length > 80 ? '…' : ''}${x.aliquota > ref.ipi ? '</span>' : ''}`);
+    if (exsIpi.length > 3) partes.push(`e mais ${exsIpi.length - 3} Ex da TIPI`);
     partes.push(`fonte: ${esc(rotuloFontes(oficiais))}`);
     if (ref.curada && (!mesmaAliquota(ref.curada.ii, ref.ii) || !mesmaAliquota(ref.curada.ipi, ref.ipi))) {
-      partes.push(`<span class="aviso">tabela anterior do app (não oficial): II ${esc(p2(ref.curada.ii))}, IPI ${esc(p2(ref.curada.ipi))}</span>`);
+      partes.push(`tabela anterior do app (buscadorncm, não oficial): II ${esc(p2(ref.curada.ii))}, IPI ${esc(p2(ref.curada.ipi))}`);
     }
+    // Notas da tabela não oficial que falam de alíquota ou Ex podem contradizer o dado oficial: saem.
+    observacao = observacao.split(/(?<=\.)\s+/).filter((frase) => !/%|\bEx\b|LETEC|LEBIT|Gecex|alíquota/i.test(frase)).join(' ');
   } else {
     if (ref.baseLegalII) partes.push(`II: ${esc(ref.baseLegalII)}`);
     partes.push(`${esc(ref.fonte || '—')}, lida em ${esc(F.data(ref.lidoEm))}`);
   }
-  if (ref.observacao) partes.push(esc(ref.observacao));
+  if (observacao) partes.push(esc(observacao));
   let extra = '';
   if (ref.tipo === 'personalizada') extra += ' <span class="tag tag--aviso">personalizada</span>';
   if (ref.alerta) extra += ` <span class="aviso">⚠ ${esc(ref.alerta)}</span>`;
@@ -507,7 +574,8 @@ function alternarSiscomex() {
 function renderRegime() {
   const regime = REGRAS.regimesTributarios[estado.operacao.regimeTributario] || REGRAS.regimesTributarios.simples;
   const extra = [regime.efeito2027, regime.prazo].filter(Boolean).join(' ');
-  const html = `${esc(regime.efeito2026)}${extra ? `<details><summary>O que muda em 2027</summary>${esc(extra)}</details>` : ''}`;
+  const fontes = REGRAS.fontesRegimes.map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.rotulo)}</a> (lida em ${esc(F.data(f.lidoEm))})`).join('; ');
+  const html = `${esc(regime.efeito2026)}${extra ? `<details><summary>O que muda em 2027</summary>${esc(extra)}</details>` : ''}<details><summary>Fontes</summary>${fontes}</details>`;
   const alvo = $('#regime-ajuda');
   if (alvo.dataset.regime !== estado.operacao.regimeTributario) {
     alvo.innerHTML = html;
@@ -524,8 +592,42 @@ function renderDeducoes() {
 }
 
 // ── Resumo, alertas, resultados ───────────────────────────
+/** Junta alertas iguais de itens com a mesma NCM ("Itens 2, 6, 7 (NCM …): …"). */
+function agruparAlertas(lista) {
+  const grupos = new Map();
+  const saida = [];
+  for (const a of lista) {
+    if (a.item === undefined) { saida.push(a); continue; }
+    const ncm = estado.itens[a.item]?.ncm || '';
+    const resto = a.texto.replace(/^Item \d+(?: \([^)]*\))?: /, '');
+    const chave = `${a.nivel}|${chaveNcm(ncm)}|${resto}`;
+    if (!grupos.has(chave)) {
+      const g = { nivel: a.nivel, texto: a.texto, resto, ncm, itens: [] };
+      grupos.set(chave, g);
+      saida.push(g);
+    }
+    grupos.get(chave).itens.push(a.item + 1);
+  }
+  return saida.map((g) => (g.itens && g.itens.length > 1
+    ? { nivel: g.nivel, texto: `Itens ${g.itens.join(', ')}${g.ncm ? ` (NCM ${g.ncm})` : ''}: ${g.resto}` }
+    : { nivel: g.nivel, texto: g.texto }));
+}
+
 function alertasDaTela(saida) {
-  const lista = gerarAlertas(estado, saida, { tetoRtsUSD: REGRAS.tetoRtsUSD, referencia });
+  // "sobrescrito" do calc.js é refeito aqui com o valor de referência e a origem.
+  const lista = gerarAlertas(estado, saida, { tetoRtsUSD: REGRAS.tetoRtsUSD, referencia }).filter((a) => !/sobrescrito/.test(a.texto));
+  estado.itens.forEach((it, i) => {
+    const ref = referencia(it.ncm);
+    if (!ref) return;
+    const difs = [];
+    if (Number.isFinite(it.ii) && !mesmaAliquota(it.ii, ref.ii)) {
+      difs.push(`II ${p2(it.ii)} digitado; ${ref.tipo === 'oficial' ? `oficial ${p2(ref.ii)} (${textoOrigemII(ref)})` : `tabela ${p2(ref.ii)}`}`);
+    }
+    if (Number.isFinite(it.ipi) && !mesmaAliquota(it.ipi, ref.ipi)) {
+      difs.push(`IPI ${p2(it.ipi)} digitado; ${ref.tipo === 'oficial' ? `TIPI ${p2(ref.ipi)}` : `tabela ${p2(ref.ipi)}`}`);
+    }
+    if (difs.length) lista.push({ nivel: 'aviso', item: i, texto: `Item ${i + 1}${it.codigo ? ` (${it.codigo})` : ''}: ${difs.join('; ')}. Confirmar com o despachante.` });
+  });
   // Alertas das fontes oficiais, agrupados por NCM (não repetem item a item).
   const porNcm = new Map();
   estado.itens.forEach((it, i) => {
@@ -543,11 +645,11 @@ function alertasDaTela(saida) {
     const ref = referencia(c);
     if (!ref || ref.tipo !== 'oficial') continue;
     const sugerido = ref.ii;
-    const menores = ref.resII.menores.filter((x) => x.anexo !== 'I' && x.anexo !== 'II');
-    if (menores.length) {
-      const m = menores.map((x) => `${x.nome} ${F.pct(x.aliquota, 1)} (${x.ato})`).join('; ');
-      lista.push({ nivel: 'aviso', texto: `${quem}: II sugerido ${F.pct(sugerido, 1)} (${ref.resII.origem.nome}), mas também vale para a NCM ${m}. Se a exceção menor prevalecer, o custo cai. Confirmar com o despachante.` });
+    if (ref.resII.menores.length) {
+      const m = ref.resII.menores.map((x) => `${x.nome} ${F.pct(x.aliquota, 1)} (${x.ato})`).join('; ');
+      lista.push({ nivel: 'aviso', texto: `${quem}: II sugerido ${F.pct(sugerido, 1)} (${ref.resII.origem.nome}); também vigente e não aplicada: ${m}. Confirmar com o despachante.` });
     }
+    for (const a of ref.resII.avisos) lista.push({ nivel: 'aviso', texto: `${quem}: ${a}` });
     const exsMenores = ref.resII.exs.filter((x) => !x.quota && x.aliquota < sugerido);
     if (exsMenores.length) {
       const m = exsMenores.map((x) => `Ex ${x.ex} a ${F.pct(x.aliquota, 1)} (${x.ato}): "${x.descricao.slice(0, 120)}${x.descricao.length > 120 ? '…' : ''}"`).join('; ');
@@ -571,7 +673,7 @@ function alertasDaTela(saida) {
     lista.push({ nivel: 'aviso', texto: `Siscomex com ${saida.totais.adicoes} adições: faixas a partir da 6ª a confirmar na Portaria ME 4.131/2021.` });
   }
   const ordem = { erro: 0, aviso: 1, info: 2 };
-  return lista.sort((a, b) => ordem[a.nivel] - ordem[b.nivel]);
+  return agruparAlertas(lista).sort((a, b) => ordem[a.nivel] - ordem[b.nivel]);
 }
 
 function renderResumo(saida, erros, alertas) {
@@ -755,13 +857,22 @@ function linhasMemoria(it, saida) {
   return L;
 }
 
+let htmlMemoriaAnterior = '';
 function renderMemoria(saida) {
   const alvo = $('#memoria');
-  if (!saida) {
-    alvo.innerHTML = '<p class="vazio-msg">Complete os dados para ver a memória de cálculo.</p>';
-    return;
+  // Só troca o HTML quando o conteúdo muda: redesenhar a cada recálculo engolia o clique no título
+  // (o elemento clicado era substituído no meio do clique, ao sair de um campo editado).
+  const html = !saida
+    ? '<p class="vazio-msg">Complete os dados para ver a memória de cálculo.</p>'
+    : htmlMemoria(saida);
+  if (html !== htmlMemoriaAnterior) {
+    alvo.innerHTML = html;
+    htmlMemoriaAnterior = html;
   }
-  alvo.innerHTML = saida.itens.map((it, i) => `
+}
+
+function htmlMemoria(saida) {
+  return saida.itens.map((it, i) => `
     <details class="memoria" data-m="${i}" ${memoriaAberta.has(i) ? 'open' : ''}>
       <summary>${i + 1}. ${esc(it.codigo || '')}${it.codigo && it.descricao ? ' · ' : ''}${esc(it.descricao)}
         <span>custo ${F.brl(it.custoTotal)} · preço un ${F.brl(it.precoUnit)}</span></summary>
@@ -884,7 +995,9 @@ function executarBuscaNcm() {
   const alvo = $('#busca-resultados');
   const q = $('#busca-ncm').value;
   if (!indiceNcm) {
-    alvo.innerHTML = `<li class="busca__vazio">${dadosNcmEstado === 'erro' ? 'Pesquisa indisponível: não foi possível carregar a nomenclatura oficial.' : 'Carregando a nomenclatura oficial (Siscomex)…'}</li>`;
+    alvo.innerHTML = dadosNcmEstado === 'erro'
+      ? '<li class="busca__vazio">Não foi possível carregar a nomenclatura oficial. <button type="button" class="btn btn--link" data-acao-busca="recarregar">Tentar de novo</button></li>'
+      : '<li class="busca__vazio">Carregando a nomenclatura oficial (Siscomex)…</li>';
     if (dadosNcmEstado !== 'erro') carregarDadosNcm();
     return;
   }
@@ -898,13 +1011,16 @@ function executarBuscaNcm() {
     return;
   }
   const destino = alvoBuscaNcm !== null && estado.itens[alvoBuscaNcm] ? alvoBuscaNcm : null;
+  let separou = false;
   alvo.innerHTML = resultados.map((r) => {
+    const sep = r.parcial && !separou ? '<li class="busca__sep">Com parte das palavras</li>' : '';
+    if (r.parcial) separou = true;
     const ref = referencia(r.codigo);
     const aliq = ref
-      ? `II ${esc(p2(ref.ii))} · IPI ${esc(ref.resIPI?.nt ? 'NT' : p2(ref.ipi))}${ref.tipo === 'oficial' ? '' : ` <span class="tag tag--aviso">${ref.tipo === 'personalizada' ? 'personalizada' : 'tabela do app'}</span>`}${ref.tipo === 'oficial' && (ref.resII.exs.length || ref.resII.menores.some((x) => x.anexo !== 'I' && x.anexo !== 'II')) ? ' <span class="tag tag--aviso">ver exceções</span>' : ''}`
+      ? `II ${esc(p2(ref.ii))} · IPI ${esc(ref.resIPI?.nt ? 'NT' : p2(ref.ipi))}${ref.tipo === 'oficial' ? '' : ` <span class="tag tag--aviso">${ref.tipo === 'personalizada' ? 'personalizada' : 'tabela do app'}</span>`}${ref.tipo === 'oficial' && (ref.resII.exs.length || ref.resII.menores.length || ref.resII.prevaleceu) ? ' <span class="tag tag--aviso">ver exceções</span>' : ''}`
       : '<span class="falta">sem alíquota</span>';
     const caminho = r.caminho.slice(1).slice(-3).map((x) => (x.length > 80 ? `${x.slice(0, 77)}…` : x)).join(' › ');
-    return `
+    return `${sep}
       <li class="busca__item">
         <div class="busca__texto">
           <strong>${esc(r.ncm)}</strong> ${esc(r.descricao)}
@@ -921,6 +1037,8 @@ function executarBuscaNcm() {
 
 function abrirDialogoNcm({ alvo = null, consulta = '', ncmSugerida = '' } = {}) {
   alvoBuscaNcm = alvo;
+  linhaFocoNcm = alvo;
+  if (dadosNcmEstado === 'erro') carregarDadosNcm(); // tenta de novo a cada abertura
   renderDialogoNcm();
   const form = $('#form-ncm');
   form.reset();
@@ -997,10 +1115,16 @@ function adicionarNcmPersonalizada(ev) {
 
   // Linhas com essa NCM e alíquotas em branco recebem os valores agora.
   estado.itens.forEach((it, i) => {
-    if (chaveNcm(it.ncm) === chave && (it.ii == null || it.ipi == null)) {
-      ncmAplicada[i] = '';
-      aplicarNcm(i);
+    if (chaveNcm(it.ncm) !== chave) return;
+    const tr = $(`#itens-corpo tr[data-i="${i}"]`);
+    for (const [alvo, valor] of [['ii', ii], ['ipi', ipi]]) {
+      if (it[alvo] === null || it[alvo] === undefined) {
+        it[alvo] = valor;
+        aliqAuto[i][alvo] = valor;
+        if (tr) $(`input[data-campo="${alvo}"]`, tr).value = F.paraCampoPct(valor);
+      }
     }
+    ncmAplicada[i] = chave;
   });
   renderListaNcm();
   renderDialogoNcm();
@@ -1068,7 +1192,15 @@ function renderFx() {
     msg = 'Digite a taxa ou busque a PTAX.';
   }
   const automatica = p && op.origemCambioFiscal === 'ptax' && mesmaTaxa(op.cambioFiscal, p.venda);
-  alvo.innerHTML = `<button type="button" class="btn btn--sec" id="btn-ptax" ${ptaxEstado === 'buscando' ? 'disabled' : ''}>${automatica ? 'Atualizar' : 'Usar PTAX'}</button><span id="fx-status">${msg}</span>`;
+  if (!$('#btn-ptax')) {
+    alvo.innerHTML = '<button type="button" class="btn btn--sec" id="btn-ptax"></button><span id="fx-status" aria-live="polite"></span>';
+  }
+  const btn = $('#btn-ptax');
+  const rotulo = automatica ? 'Atualizar' : 'Usar PTAX';
+  if (btn.textContent !== rotulo) btn.textContent = rotulo;
+  btn.disabled = ptaxEstado === 'buscando';
+  const status = $('#fx-status');
+  if (status.innerHTML !== msg) status.innerHTML = msg;
 }
 
 /** Preenche o câmbio com a PTAX, sem sobrescrever taxa digitada (a menos que forcar = true). */
@@ -1082,8 +1214,9 @@ function aplicarPtax(r, { forcar = false } = {}) {
     op.origemCambioFiscal = 'ptax';
     mudou = true;
   }
-  if (op.moeda === 'EUR' && r.paridadeUSD && (forcar || op.paridadeUSD == null || op.origemCambioFiscal === 'ptax')) {
+  if (op.moeda === 'EUR' && r.paridadeUSD && (forcar || op.paridadeUSD == null || op.origemParidade !== 'manual')) {
     op.paridadeUSD = r.paridadeUSD;
+    op.origemParidade = 'ptax';
     mudou = true;
   }
   if (pg.cambioPagamento === null || pg.cambioPagamento === undefined || pg.origemCambioPagamento === 'ptax') {
@@ -1092,7 +1225,12 @@ function aplicarPtax(r, { forcar = false } = {}) {
     mudou = true;
   }
   if (mudou) {
-    preencherCampos();
+    // Atualiza só os campos do câmbio, e nunca o que está com o foco (o usuário pode estar digitando).
+    for (const caminho of ['operacao.cambioFiscal', 'operacao.dataCambioFiscal', 'operacao.paridadeUSD', 'operacao.pagamento.cambioPagamento']) {
+      const el = $(`[data-bind="${caminho}"]`);
+      if (!el || el === document.activeElement) continue;
+      el.value = textoCampo(el.dataset.tipo, ler(estado, caminho), el.dataset.casas ? Number(el.dataset.casas) : undefined);
+    }
     atualizar();
   }
 }
@@ -1126,6 +1264,7 @@ function trocarMoeda(nova) {
   op.dataCambioFiscal = '';
   op.origemCambioFiscal = '';
   op.paridadeUSD = null;
+  op.origemParidade = '';
   op.pagamento.cambioPagamento = null;
   op.pagamento.origemCambioPagamento = '';
   ptaxUltima = null;
@@ -1154,7 +1293,8 @@ async function abrirArquivo(ev) {
     estado = S.normalizarEntrada(bruto, REGRAS);
     if (estado.operacao.origemCambioFiscal === 'ptax') estado.operacao.origemCambioFiscal = 'manual';
     if (estado.operacao.pagamento.origemCambioPagamento === 'ptax') estado.operacao.pagamento.origemCambioPagamento = 'manual';
-    ncmAplicada = estado.itens.map((it) => chaveNcm(it.ncm));
+    if (estado.operacao.origemParidade === 'ptax') estado.operacao.origemParidade = 'manual';
+    resetarMetaLinhas();
     memoriaAberta.clear();
     mostrarTodosErros = true;
     ptaxUltima = null;
@@ -1204,7 +1344,18 @@ function ligarEventos() {
   $('#btn-ncms').addEventListener('click', () => abrirDialogoNcm());
   $('#busca-ncm').addEventListener('input', () => { clearTimeout(timerBuscaNcm); timerBuscaNcm = setTimeout(executarBuscaNcm, 150); });
   $('#form-busca-ncm').addEventListener('submit', (ev) => { ev.preventDefault(); executarBuscaNcm(); });
+  $('#dlg-ncm').addEventListener('close', () => {
+    const ativo = document.activeElement;
+    if ((!ativo || ativo === document.body) && linhaFocoNcm !== null) {
+      $(`#itens-corpo tr[data-i="${linhaFocoNcm}"] input[data-campo="ncm"]`)?.focus();
+    }
+  });
   $('#busca-resultados').addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-acao-busca="recarregar"]')) {
+      carregarDadosNcm();
+      executarBuscaNcm();
+      return;
+    }
     const usar = ev.target.closest('[data-usar-ncm]');
     if (usar) { usarNcmNoItem(usar.dataset.usarNcm); return; }
     const pers = ev.target.closest('[data-personalizar-ncm]');
@@ -1241,7 +1392,7 @@ function ligarEventos() {
   $('#btn-nova').addEventListener('click', () => {
     if (!window.confirm('Começar uma simulação nova? O rascunho atual será substituído.')) return;
     estado = S.novaEntrada(REGRAS);
-    ncmAplicada = [''];
+    resetarMetaLinhas();
     memoriaAberta.clear();
     mostrarTodosErros = false;
     for (const el of $$('[data-tocado]')) delete el.dataset.tocado;
@@ -1292,11 +1443,18 @@ function carregarLogos() {
   }
 }
 
+/** Rodapé e aviso da impressão: citam as fontes oficiais quando carregadas; senão, a tabela do app. */
+function renderFontesRodape() {
+  const fontes = oficiais
+    ? `${rotuloFontes(oficiais)}${nomenclatura ? ` · NCM: Siscomex, ${nomenclatura.vigencia.toLowerCase()}` : ''}`
+    : `alíquotas da tabela do app lidas em ${F.data(REGRAS.aliquotasNcmLidasEm)} (não oficial)`;
+  $('#rodape-regras').textContent = `${REGRAS.rotulo} · ${fontes} · estimativa, confirmar com o despachante`;
+  $('#impressao-aviso').textContent = `Estimativa. ${REGRAS.rotulo} · ${fontes} · confirmar com o despachante.`;
+}
+
 function iniciar() {
   $('#sel-uf').innerHTML = UFS.map((uf) => `<option value="${uf}">${uf}</option>`).join('');
-  const regrasTexto = `${REGRAS.rotulo} · alíquotas lidas em ${F.data(REGRAS.aliquotasNcmLidasEm)} · estimativa, confirmar com o despachante`;
-  $('#rodape-regras').textContent = regrasTexto;
-  $('#impressao-aviso').textContent = `Estimativa. ${regrasTexto.replace(' · estimativa, confirmar', ' · confirmar')}.`;
+  renderFontesRodape();
   carregarLogos();
   renderFx();
   renderListaNcm();

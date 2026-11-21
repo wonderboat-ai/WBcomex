@@ -328,3 +328,15 @@ Testes extras:
 - Colar itens direto de planilha.
 - Histórico de simulações.
 - Regras de 2027 (CBS/IBS, IPI zero).
+
+## 14. Adendo v1.1 (21/11/2026)
+
+Mudanças pedidas pelo dono do projeto depois do v1. Onde este adendo diverge das seções acima, vale o adendo.
+
+- **Seção 6 (alíquotas):** além de `data/ncm.js`, o app lê `data/ncm-nomenclatura.json` (nomenclatura oficial do Siscomex) e `data/aliquotas-oficiais.json` (II pelos Anexos da Res. Gecex 272/2021, do MDIC/Camex; IPI pela TIPI), gerados por `scripts/`. Prioridade: NCM personalizada > oficial > `data/ncm.js`. Regra do II: exceções temporárias dos Anexos IV, V, VI, VIII, IX e X prevalecem sobre os Anexos I e II enquanto vigentes (nota oficial da própria planilha); Ex e quota só geram alerta. NCM fora da nomenclatura vigente continua com II/IPI em branco.
+- **Seção 3.1 (itens):** cada item tem pesquisa de NCM por descrição ou código (lupa).
+- **Seção 7 (câmbio):** a PTAX de venda (fechamento) do BCB é buscada sozinha ao abrir, em dólar ou euro, sem sobrescrever taxa digitada. Regra fiscal: taxa do dia útil anterior ao registro (Portaria MF 6/1999).
+- **Seção 4 (modelo de dados):** campos extras em `operacao`: `moeda` ('USD' | 'EUR'; os campos `*USD` guardam o valor na moeda da operação), `paridadeUSD`, `origemParidade`, `origemCambioFiscal`, `regimeTributario` ('simples' | 'simples-hibrido'). O formato dos fixtures não mudou.
+- **Premissas (seção 0):** o comprador pode estar no Simples Nacional ou no Simples híbrido (IBS/CBS fora do DAS, LC 214/2025). Em 2026 o custo é o mesmo nos dois; as regras de 2027 continuam fora (seção 13).
+- **Seção 9 (logo):** os arquivos reais estão em `assets/img/`.
+

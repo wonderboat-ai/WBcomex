@@ -263,6 +263,7 @@ input.sobrescrito { border-color: var(--wb-warn); box-shadow: inset 0 0 0 1px va
 .busca__aliq { white-space: nowrap; color: var(--wb-white); font-size: .8rem; }
 .busca__acoes { display: flex; gap: 6px; align-items: center; }
 .busca__vazio { padding: 12px; color: var(--wb-text-2); font-size: .84rem; }
+.busca__sep { padding: 6px 12px; font-size: .72rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--wb-text-2); background: var(--wb-black); border-bottom: 1px solid var(--wb-line); }
 .btn--mini { padding: 6px 10px; min-height: 30px; font-size: .78rem; }
 @media (max-width: 639px) {
   .busca__item { grid-template-columns: minmax(0, 1fr); }

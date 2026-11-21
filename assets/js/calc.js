@@ -85,7 +85,8 @@ export function validarEntrada(entrada) {
     add('operacao.paridadeUSD', 'Paridade US$ por unidade da moeda deve ser maior que zero.');
   }
 
-  if (vazio(op.cambioFiscal)) add('operacao.cambioFiscal', 'Informe o câmbio fiscal (R$/US$).');
+  const sm = op.moeda === 'EUR' ? '€' : 'US$';
+  if (vazio(op.cambioFiscal)) add('operacao.cambioFiscal', `Informe o câmbio fiscal (R$/${sm}).`);
   else if (!ehNumero(op.cambioFiscal) || op.cambioFiscal <= 0) add('operacao.cambioFiscal', 'Câmbio fiscal deve ser um número maior que zero.');
 
   if (vazio(op.icms)) add('operacao.icms', 'Informe a alíquota de ICMS da UF de destino.');
@@ -96,7 +97,7 @@ export function validarEntrada(entrada) {
     else if (!ehNumero(op[campo]) || op[campo] < 0) add(`operacao.${campo}`, `${campo.toUpperCase()} deve ser um número maior ou igual a zero.`);
   }
 
-  for (const [campo, nome] of [['freteUSD', 'Frete'], ['seguroUSD', 'Seguro']]) {
+  for (const [campo, nome] of [['freteUSD', `Frete (${sm})`], ['seguroUSD', `Seguro (${sm})`]]) {
     if (!vazio(op[campo]) && (!ehNumero(op[campo]) || op[campo] < 0)) add(`operacao.${campo}`, `${nome} deve ser um número maior ou igual a zero.`);
   }
 
@@ -111,7 +112,7 @@ export function validarEntrada(entrada) {
   if (!pg || (pg.modo !== 'cambio' && pg.modo !== 'valorPagoBRL')) {
     add('operacao.pagamento', 'Escolha o modo de pagamento: câmbio + IOF ou valor pago em R$.');
   } else if (pg.modo === 'cambio') {
-    if (vazio(pg.cambioPagamento)) add('operacao.pagamento.cambioPagamento', 'Informe o câmbio do pagamento (R$/US$).');
+    if (vazio(pg.cambioPagamento)) add('operacao.pagamento.cambioPagamento', `Informe o câmbio do pagamento (R$/${sm}).`);
     else if (!ehNumero(pg.cambioPagamento) || pg.cambioPagamento <= 0) add('operacao.pagamento.cambioPagamento', 'Câmbio do pagamento deve ser maior que zero.');
     if (vazio(pg.iof)) add('operacao.pagamento.iof', 'Informe o IOF do pagamento (use 0 se não houver).');
     else if (!ehNumero(pg.iof) || pg.iof < 0) add('operacao.pagamento.iof', 'IOF deve ser maior ou igual a zero.');
@@ -132,7 +133,7 @@ export function validarEntrada(entrada) {
       if (!chaveNcm(item?.ncm)) add(`itens.${i}.ncm`, `${r}: informe a NCM.`);
       if (vazio(item?.qtd)) add(`itens.${i}.qtd`, `${r}: informe a quantidade.`);
       else if (!ehNumero(item.qtd) || item.qtd <= 0) add(`itens.${i}.qtd`, `${r}: quantidade deve ser maior que zero.`);
-      if (vazio(item?.fobUnitUSD)) add(`itens.${i}.fobUnitUSD`, `${r}: informe o preço FOB unitário (US$).`);
+      if (vazio(item?.fobUnitUSD)) add(`itens.${i}.fobUnitUSD`, `${r}: informe o preço FOB unitário (${sm}).`);
       else if (!ehNumero(item.fobUnitUSD) || item.fobUnitUSD <= 0) add(`itens.${i}.fobUnitUSD`, `${r}: preço FOB deve ser maior que zero.`);
       for (const [campo, nome] of [['ii', 'II'], ['ipi', 'IPI']]) {
         if (vazio(item?.[campo])) add(`itens.${i}.${campo}`, `${r}: alíquota de ${nome} em branco. Preencha com a alíquota confirmada.`);

@@ -345,6 +345,16 @@ describe('moeda da operação (USD/EUR) e teto do RTS em US$', () => {
     assert.ok(textos.some((t) => /paridade em US\$/.test(t)));
   });
 
+  test('mensagens de validação usam o símbolo da moeda da operação', () => {
+    const e = base();
+    e.operacao.moeda = 'EUR';
+    e.operacao.cambioFiscal = null;
+    e.itens[0].fobUnitUSD = null;
+    const msgs = validarEntrada(e).map((x) => x.mensagem).join(' ');
+    assert.match(msgs, /R\$\/€/);
+    assert.match(msgs, /FOB unitário \(€\)/);
+    assert.ok(!/US\$/.test(msgs), msgs);
+  });
   test('moeda inválida e paridade negativa são erros legíveis', () => {
     const e = base();
     e.operacao.moeda = 'GBP';
@@ -376,5 +386,10 @@ describe('regime do comprador', () => {
     assert.match(r.efeito2026, /art\. 348/);
     assert.match(r.efeito2027, /art\. 78/);
     assert.match(r.prazo, /20\/12\/2026/);
+    assert.ok(!/irretrat/i.test(r.prazo), 'a fonte não diz que o cancelamento é irretratável');
+    for (const f of REGRAS_2026.fontesRegimes) {
+      assert.match(f.url, /^https:\/\//);
+      assert.match(f.lidoEm, /^\d{4}-\d{2}-\d{2}$/);
+    }
   });
 });

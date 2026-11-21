@@ -47,7 +47,8 @@ export const REGRAS_2026 = Object.freeze({
     icmsPadrao: 'SPEC v1 (21/11/2026): ICMS padrão de 17% para SC, editável na tela.'
   }),
 
-  // Data em que as alíquotas de NCM (data/ncm.js) foram lidas.
+  // Data em que as alíquotas da tabela do app (data/ncm.js, buscadorncm, não oficial) foram lidas.
+  // As alíquotas oficiais (data/aliquotas-oficiais.json) têm as próprias datas e prevalecem.
   aliquotasNcmLidasEm: '2026-11-20',
 
   // Regime padrão de uma simulação nova (a empresa informou estar no Simples híbrido em 21/11/2026).
@@ -57,23 +58,27 @@ export const REGRAS_2026 = Object.freeze({
   regimesTributarios: Object.freeze({
     simples: Object.freeze({
       rotulo: 'Simples Nacional (tudo no DAS)',
-      efeito2026: 'Todo tributo da importação é custo: II, IPI, PIS/COFINS-Importação e Siscomex são pagos fora do DAS sem crédito (LC 123/2006, art. 13 §1º, XII, e art. 23), e o ICMS-importação também (art. 13 §1º, XIII).'
+      efeito2026: 'Todo tributo da importação é custo: II, IPI e PIS/COFINS-Importação são recolhidos fora do DAS (LC 123/2006, art. 13 §1º) e o optante não aproveita crédito (art. 23); a taxa Siscomex é paga na DUIMP; o ICMS-importação também fica fora do DAS (art. 13 §1º, XIII).'
     }),
     'simples-hibrido': Object.freeze({
       rotulo: 'Simples híbrido (IBS/CBS fora do DAS)',
       efeito2026: 'Em 2026 o custo da importação é o mesmo do Simples puro: os optantes do Simples estão fora das alíquotas-teste de CBS/IBS de 2026 (LC 214/2025, art. 348, III, "c") e a opção pelo regime regular produz efeitos a partir de 01/01/2027.',
-      efeito2027: 'A partir de 01/01/2027, a CBS e o IBS pagos na importação viram crédito (LC 214/2025, art. 78); PIS/COFINS deixam de existir e o IPI muda. Essas regras entram em regras-2027.js quando a alíquota da CBS for fixada: o TCU calculou 11,3% (Acórdão 2.933/2026) e falta a resolução do Senado.',
-      prazo: 'Cancelamento da opção: de 03/11 a 20/12/2026, irretratável (Resolução CGSN 194/2026).'
+      efeito2027: 'A partir de 01/01/2027, a CBS e o IBS pagos na importação viram crédito (LC 214/2025, art. 78); PIS/COFINS deixam de existir e o IPI muda. Essas regras entram em regras-2027.js quando a alíquota da CBS for fixada pelo Senado (o TCU enviou o cálculo de 11,3%, Acórdão 2.933/2026).',
+      prazo: 'A opção feita de 01/09 a 30/10/2026 produz efeitos a partir de 01/01/2027 e pode ser cancelada de 03/11 a 20/12/2026 (Receita Federal; Resolução CGSN 194/2026).'
     })
   }),
 
   // Preço de venda: alíquota do DAS para revenda de mercadoria de importação própria.
-  dasRevendaImportacao: 'Revenda de importação própria: o optante é equiparado a industrial para o IPI e a receita vai para o Anexo II do Simples (LC 123/2006, art. 18 §4º, II; Resolução CGSN 140/2018, art. 25 §1º; ADI RFB 1/2018). Use a alíquota efetiva informada pelo contador.',
+  dasRevendaImportacao: 'Revenda de importação própria: segundo a Receita (Perguntas e Respostas do Simples) e a Resolução CGSN 140/2018, art. 25 §1º, o importador é equiparado a industrial para o IPI e a receita vai para o Anexo II. Confirme com o contador e use a alíquota efetiva do DAS que ele informar.',
 
+  // Fontes dos textos de regime (lidas em 21/11/2026). A notícia da Receita foi conferida na íntegra;
+  // as demais vêm da pesquisa com verificação independente (compilações e notícias oficiais).
   fontesRegimes: Object.freeze([
-    'https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/setembro/simples-nacional-2027-entenda-os-novos-prazos-e-faca-sua-escolha-com-consciencia-e-tranquilidade',
-    'https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp214.htm',
-    'https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp123.htm'
+    Object.freeze({ rotulo: 'Receita Federal: prazos do Simples e do regime regular de IBS/CBS para 2027', url: 'https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/setembro/simples-nacional-2027-entenda-os-novos-prazos-e-faca-sua-escolha-com-consciencia-e-tranquilidade', lidoEm: '2026-11-21' }),
+    Object.freeze({ rotulo: 'Receita Federal: Perguntas e Respostas do Simples Nacional', url: 'https://www8.receita.fazenda.gov.br/simplesnacional/arquivos/manual/perguntaosn.pdf', lidoEm: '2026-11-21' }),
+    Object.freeze({ rotulo: 'Senado: cálculo da alíquota de referência da CBS enviado pelo TCU', url: 'https://www12.senado.leg.br/noticias/materias/2026/11/03/senado-deve-receber-calculo-da-cbs-na-proxima-terca-para-definir-aliquota', lidoEm: '2026-11-21' }),
+    Object.freeze({ rotulo: 'Lei Complementar 214/2025', url: 'https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp214.htm', lidoEm: '2026-11-21' }),
+    Object.freeze({ rotulo: 'Lei Complementar 123/2006', url: 'https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp123.htm', lidoEm: '2026-11-21' })
   ])
 });
 

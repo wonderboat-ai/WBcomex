@@ -3,7 +3,8 @@
 // (só código e descrição, para a pesquisa de NCM na página). Sem dependências.
 //
 // Uso: node scripts/atualizar-ncm.mjs [arquivo-json-ja-baixado]
-// A nomenclatura NÃO traz alíquotas: II e IPI continuam vindo de data/ncm.js (com fonte e data).
+// A nomenclatura NÃO traz alíquotas: II e IPI vêm de data/aliquotas-oficiais.json (scripts/gerar-aliquotas.py);
+// data/ncm.js fica como reserva. Prioridade no app: personalizada > oficial > data/ncm.js.
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
