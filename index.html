@@ -27,7 +27,7 @@
       </span>
       <div class="topo__titulo">
         <h1>Calculadora de Importação</h1>
-        <p class="topo__sub">Eletrônicos · regime comum · Simples Nacional · aéreo/courier</p>
+        <p class="topo__sub">Eletrônicos · regime comum · Simples Nacional · aéreo/courier · dólar ou euro</p>
       </div>
     </div>
     <nav class="topo__acoes" aria-label="Ações da simulação">
@@ -71,20 +71,42 @@
             <span class="campo__rotulo">ICMS %</span>
             <input type="text" inputmode="decimal" data-bind="operacao.icms" data-tipo="pct" placeholder="—" autocomplete="off">
           </label>
+          <div class="campo campo--2 campo--moeda">
+            <span class="campo__rotulo" id="rot-moeda">Moeda da invoice</span>
+            <div class="segmento segmento--compacto" role="radiogroup" aria-labelledby="rot-moeda">
+              <label class="segmento__opcao"><input type="radio" name="moeda" value="USD" data-bind="operacao.moeda" data-tipo="radio"><span>US$ · Dólar</span></label>
+              <label class="segmento__opcao"><input type="radio" name="moeda" value="EUR" data-bind="operacao.moeda" data-tipo="radio"><span>€ · Euro</span></label>
+            </div>
+          </div>
           <label class="campo">
-            <span class="campo__rotulo">Câmbio fiscal R$/US$ <abbr title="obrigatório">*</abbr></span>
+            <span class="campo__rotulo">Câmbio fiscal R$/<span data-simbolo>US$</span> <abbr title="obrigatório">*</abbr></span>
             <input type="text" inputmode="decimal" data-bind="operacao.cambioFiscal" data-tipo="numero" data-casas="4" placeholder="ex.: 5,79" autocomplete="off" required>
           </label>
           <label class="campo">
             <span class="campo__rotulo">Data da taxa</span>
             <input type="date" data-bind="operacao.dataCambioFiscal" data-tipo="texto">
           </label>
-          <div class="campo campo--2 campo--fx" id="fx-area">
-            <span class="campo__rotulo">Cotação</span>
+          <div class="campo campo--3 campo--fx" id="fx-area">
+            <span class="campo__rotulo">Cotação automática (PTAX do Banco Central)</span>
             <div class="fx" id="fx-conteudo"></div>
           </div>
+          <label class="campo" data-so-eur hidden>
+            <span class="campo__rotulo">Paridade US$ por €</span>
+            <input type="text" inputmode="decimal" data-bind="operacao.paridadeUSD" data-tipo="numero" data-casas="4" placeholder="ex.: 1,0982" autocomplete="off" title="Usada só para conferir o teto de US$ 3.000 do regime simplificado">
+          </label>
         </div>
         <p class="info-linha" id="info-regras"></p>
+
+        <div class="grade grade--4 regime">
+          <div class="campo campo--2">
+            <label class="campo__rotulo" for="sel-regime">Regime do comprador</label>
+            <select id="sel-regime" data-bind="operacao.regimeTributario" data-tipo="texto">
+              <option value="simples">Simples Nacional (tudo no DAS)</option>
+              <option value="simples-hibrido">Simples híbrido (IBS/CBS fora do DAS)</option>
+            </select>
+          </div>
+          <p class="ajuda campo--2 regime__ajuda" id="regime-ajuda"></p>
+        </div>
 
         <fieldset class="pagamento">
           <legend class="campo__rotulo">Pagamento</legend>
@@ -100,13 +122,14 @@
           </div>
           <div class="grade grade--4" data-modo="cambio">
             <label class="campo">
-              <span class="campo__rotulo">Câmbio do pagamento R$/US$</span>
+              <span class="campo__rotulo">Câmbio do pagamento R$/<span data-simbolo>US$</span></span>
               <input type="text" inputmode="decimal" data-bind="operacao.pagamento.cambioPagamento" data-tipo="numero" data-casas="4" placeholder="ex.: 5,87" autocomplete="off">
             </label>
             <label class="campo">
               <span class="campo__rotulo">IOF %</span>
               <input type="text" inputmode="decimal" data-bind="operacao.pagamento.iof" data-tipo="pct" placeholder="ex.: 3,5" autocomplete="off">
             </label>
+            <p class="ajuda campo--2" id="pag-origem"></p>
           </div>
           <div class="grade grade--4" data-modo="valorPagoBRL">
             <label class="campo campo--2">
@@ -122,7 +145,7 @@
       <section class="card" id="sec-itens" aria-labelledby="h-itens">
         <div class="card__cab">
           <h2 id="h-itens"><span class="card__num">2</span> Itens</h2>
-          <button type="button" class="btn btn--link" id="btn-ncms">Tabela de NCMs</button>
+          <button type="button" class="btn btn--link" id="btn-ncms">Pesquisar NCM</button>
         </div>
         <div class="rolagem" tabindex="0" role="region" aria-label="Tabela de itens (rola na horizontal)">
           <table class="tabela tabela--itens" id="tabela-itens">
@@ -133,7 +156,7 @@
                 <th scope="col" class="col-cod">Código</th>
                 <th scope="col" class="col-ncm">NCM</th>
                 <th scope="col" class="col-qtd num">Qtd</th>
-                <th scope="col" class="col-fob num">FOB un US$</th>
+                <th scope="col" class="col-fob num">FOB un <span data-simbolo>US$</span></th>
                 <th scope="col" class="col-pct num">II %</th>
                 <th scope="col" class="col-pct num">IPI %</th>
                 <th scope="col" class="col-mk num" title="Vazio = usa o markup global">Markup</th>
@@ -162,11 +185,11 @@
         <h2 id="h-frete"><span class="card__num">3</span> Frete e despesas</h2>
         <div class="grade grade--4">
           <label class="campo">
-            <span class="campo__rotulo">Frete internacional US$</span>
+            <span class="campo__rotulo">Frete internacional <span data-simbolo>US$</span></span>
             <input type="text" inputmode="decimal" data-bind="operacao.freteUSD" data-tipo="numero" placeholder="0,00" autocomplete="off">
           </label>
           <label class="campo">
-            <span class="campo__rotulo">Seguro US$</span>
+            <span class="campo__rotulo">Seguro <span data-simbolo>US$</span></span>
             <input type="text" inputmode="decimal" data-bind="operacao.seguroUSD" data-tipo="numero" placeholder="0,00" autocomplete="off">
           </label>
         </div>
@@ -220,6 +243,7 @@
           </label>
         </div>
         <p class="ajuda" id="deducoes-soma"></p>
+        <p class="ajuda" id="das-ajuda"></p>
       </section>
     </div>
 
@@ -231,7 +255,7 @@
           <div class="kpi"><dt>FOB total</dt><dd id="r-fob">—</dd></div>
           <div class="kpi"><dt>Valor aduaneiro <small>FOB + frete + seguro</small></dt><dd id="r-va">—</dd></div>
           <div class="kpi kpi--custo"><dt>Custo nacionalizado</dt><dd id="r-custo">—</dd></div>
-          <div class="kpi"><dt>Fator R$ por US$ FOB</dt><dd id="r-fator">—</dd></div>
+          <div class="kpi"><dt>Fator R$ por <span data-simbolo>US$</span> FOB</dt><dd id="r-fator">—</dd></div>
           <div class="kpi"><dt>Tributos <small id="r-trib-pct"></small></dt><dd id="r-trib">—</dd></div>
           <div class="kpi kpi--venda"><dt>Faturamento</dt><dd id="r-fat">—</dd></div>
           <div class="kpi"><dt>Lucro <small id="r-margem"></small></dt><dd id="r-lucro">—</dd></div>
@@ -277,9 +301,9 @@
             <tr>
               <th scope="col">#</th>
               <th scope="col">Item · NCM</th>
-              <th scope="col" class="num">FOB US$</th>
-              <th scope="col" class="num" title="Frete + seguro rateados pelo FOB">Frete US$</th>
-              <th scope="col" class="num">VA US$</th>
+              <th scope="col" class="num">FOB <span data-simbolo>US$</span></th>
+              <th scope="col" class="num" title="Frete + seguro rateados pelo FOB">Frete <span data-simbolo>US$</span></th>
+              <th scope="col" class="num">VA <span data-simbolo>US$</span></th>
               <th scope="col" class="num">VA R$</th>
               <th scope="col" class="num">II</th>
               <th scope="col" class="num">IPI</th>
@@ -324,7 +348,17 @@
 
   <dialog class="dialogo" id="dlg-ncm" aria-labelledby="h-ncm">
     <form method="dialog" class="dialogo__fechar"><button class="btn btn--link" aria-label="Fechar">Fechar ✕</button></form>
-    <h2 id="h-ncm">Tabela de NCMs</h2>
+    <h2 id="h-ncm">NCM: pesquisar e alíquotas</h2>
+    <p class="ajuda" id="busca-alvo"></p>
+    <form class="busca" id="form-busca-ncm" role="search">
+      <label class="sr" for="busca-ncm">Pesquisar NCM por descrição ou código</label>
+      <input type="search" id="busca-ncm" placeholder="Descrição ou código: sonda sonar, câmeras, 8517.62…" autocomplete="off">
+    </form>
+    <ul class="busca__lista" id="busca-resultados" aria-live="polite"></ul>
+    <p class="ajuda" id="ncm-fontes"></p>
+    <p class="ajuda">A pesquisa sugere NCMs candidatas pela descrição oficial; não substitui a classificação fiscal. Confirme a NCM com o despachante.</p>
+
+    <h3 class="subtitulo">Tabela do app</h3>
     <p class="ajuda" id="ncm-fonte"></p>
     <div class="rolagem">
       <table class="tabela tabela--ncm">
@@ -343,7 +377,7 @@
       </table>
     </div>
     <h3 class="subtitulo">Adicionar NCM personalizada</h3>
-    <p class="ajuda">Fica salva só neste navegador, marcada como "personalizada". Informe de onde veio a alíquota.</p>
+    <p class="ajuda">Fica salva só neste navegador, marcada como "personalizada", e prevalece sobre a tabela oficial (use para Ex-tarifário ou alíquota confirmada pelo despachante). Informe de onde veio a alíquota.</p>
     <form class="grade grade--4" id="form-ncm" novalidate>
       <label class="campo"><span class="campo__rotulo">NCM</span><input name="ncm" type="text" inputmode="numeric" placeholder="0000.00.00" required autocomplete="off"></label>
       <label class="campo campo--3"><span class="campo__rotulo">Descrição</span><input name="descricao" type="text" required autocomplete="off"></label>

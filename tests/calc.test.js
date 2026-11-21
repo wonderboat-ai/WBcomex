@@ -268,6 +268,13 @@ describe('alertas', () => {
     assert.ok(alertas.some((a) => a.item === 0 && /II sobrescrito/.test(a.texto)));
     assert.ok(alertas.some((a) => a.item === 1 && /fora da tabela/.test(a.texto)));
   });
+  test('aceita uma função de referência no lugar da lista de NCMs', () => {
+    const e = base();
+    const mapa = new Map(NCMS.map((n) => [n.ncm.replace(/\D/g, ''), n]));
+    const alertas = gerarAlertas(e, calcular(e), { tetoRtsUSD: 3000, referencia: (c) => mapa.get(c) || null });
+    assert.ok(alertas.some((a) => /ANATEL/.test(a.texto)));
+    assert.ok(!alertas.some((a) => /fora da tabela|sobrescrito/.test(a.texto)));
+  });
   test('margem negativa e deduções ≥ 100%', () => {
     const e = base();
     e.precificacao.impostosVenda = 0.7;
@@ -296,5 +303,93 @@ describe('dados', () => {
     assert.equal(REGRAS_2026.icmsPadrao.SC, 0.17);
     assert.ok(REGRAS_2026.vigenteDesde);
     assert.ok(REGRAS_2026.fontes.pis && REGRAS_2026.fontes.cofins && REGRAS_2026.fontes.siscomex);
+  });
+});
+
+describe('moeda da operação (USD/EUR) e teto do RTS em US$', () => {
+  const base = () => JSON.parse(readFileSync(join(FIXTURES, 'courier-8-itens-valor-pago.json'), 'utf8')).entrada;
+  const ctx = { tetoRtsUSD: REGRAS_2026.tetoRtsUSD, ncms: NCMS };
+
+  test('sem moeda = USD: fixture inalterado e teto comparado direto', () => {
+    const s = calcular(base());
+    assert.equal(s.totais.moeda, 'USD');
+    assert.equal(s.totais.paridadeUSD, 1);
+    assert.ok(Math.abs(s.totais.valorAduaneiroUSDTeto - 3293) < 1e-9);
+  });
+
+  test('euro: o cálculo é o mesmo na moeda da invoice; o teto usa VA × paridade', () => {
+    const e = base();
+    e.operacao.moeda = 'EUR';
+    e.operacao.paridadeUSD = 1.0982;
+    const s = calcular(e);
+    const sUSD = calcular(base());
+    assert.ok(Math.abs(s.totais.custoTotal - sUSD.totais.custoTotal) < 1e-9, 'mesmos números, só muda a moeda');
+    assert.ok(Math.abs(s.totais.valorAduaneiroUSDTeto - 3293 * 1.0982) < 1e-9);
+  });
+
+  test('euro abaixo do teto em US$ dispara o aviso do RTS', () => {
+    const e = base();
+    e.itens = e.itens.slice(0, 2); // VA em € pequeno
+    e.operacao.moeda = 'EUR';
+    e.operacao.paridadeUSD = 1.0982;
+    const textos = gerarAlertas(e, calcular(e), ctx).map((a) => a.texto);
+    assert.ok(textos.includes('Pode caber no regime simplificado (RTS). O v1 calcula só o regime comum.'));
+  });
+
+  test('euro sem paridade: avisa em vez de comparar € com o teto em US$', () => {
+    const e = base();
+    e.operacao.moeda = 'EUR';
+    const s = calcular(e);
+    assert.equal(s.totais.valorAduaneiroUSDTeto, null);
+    const textos = gerarAlertas(e, s, ctx).map((a) => a.texto);
+    assert.ok(textos.some((t) => /paridade em US\$/.test(t)));
+  });
+
+  test('mensagens de validação usam o símbolo da moeda da operação', () => {
+    const e = base();
+    e.operacao.moeda = 'EUR';
+    e.operacao.cambioFiscal = null;
+    e.itens[0].fobUnitUSD = null;
+    const msgs = validarEntrada(e).map((x) => x.mensagem).join(' ');
+    assert.match(msgs, /R\$\/€/);
+    assert.match(msgs, /FOB unitário \(€\)/);
+    assert.ok(!/US\$/.test(msgs), msgs);
+  });
+  test('moeda inválida e paridade negativa são erros legíveis', () => {
+    const e = base();
+    e.operacao.moeda = 'GBP';
+    assert.throws(() => calcular(e), /Moeda da operação deve ser USD ou EUR/);
+    const e2 = base();
+    e2.operacao.moeda = 'EUR';
+    e2.operacao.paridadeUSD = -1;
+    assert.throws(() => calcular(e2), /Paridade/);
+  });
+});
+
+describe('regime do comprador', () => {
+  const base = () => JSON.parse(readFileSync(join(FIXTURES, 'courier-8-itens-valor-pago.json'), 'utf8')).entrada;
+  test('Simples híbrido (IBS/CBS fora do DAS) tem o mesmo custo em 2026', () => {
+    const e = base();
+    e.operacao.regimeTributario = 'simples-hibrido';
+    const h = calcular(e);
+    const s = calcular(base());
+    assert.equal(h.totais.regimeTributario, 'simples-hibrido');
+    for (const campo of ['custoTotal', 'tributos', 'faturamento', 'lucro']) assert.equal(h.totais[campo], s.totais[campo]);
+  });
+  test('regime desconhecido é erro legível', () => {
+    const e = base();
+    e.operacao.regimeTributario = 'lucro-real';
+    assert.throws(() => calcular(e), /Simples Nacional ou Simples híbrido/);
+  });
+  test('textos do regime estão em regras-2026.js, com base legal', () => {
+    const r = REGRAS_2026.regimesTributarios['simples-hibrido'];
+    assert.match(r.efeito2026, /art\. 348/);
+    assert.match(r.efeito2027, /art\. 78/);
+    assert.match(r.prazo, /20\/12\/2026/);
+    assert.ok(!/irretrat/i.test(r.prazo), 'a fonte não diz que o cancelamento é irretratável');
+    for (const f of REGRAS_2026.fontesRegimes) {
+      assert.match(f.url, /^https:\/\//);
+      assert.match(f.lidoEm, /^\d{4}-\d{2}-\d{2}$/);
+    }
   });
 });

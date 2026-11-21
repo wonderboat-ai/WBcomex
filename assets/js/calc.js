@@ -34,6 +34,15 @@ export function chaveNcm(ncm) {
   return String(ncm ?? '').replace(/\D/g, '');
 }
 
+/** Moedas da invoice. Os campos *USD da entrada/saída guardam valores na moeda da operação
+ *  (nome mantido por compatibilidade com o formato da SPEC v1; padrão USD). */
+export const MOEDAS_ACEITAS = Object.freeze(['USD', 'EUR']);
+
+/** Regimes do comprador. Pelas regras de 2026 o custo é o mesmo nos dois: no "híbrido"
+ *  (IBS/CBS fora do DAS, LC 214/2025) a opção só produz efeitos a partir de 01/01/2027 e os
+ *  optantes do Simples estão fora das alíquotas-teste de 2026 (LC 214, art. 348, III, "c"). */
+export const REGIMES_ACEITOS = Object.freeze(['simples', 'simples-hibrido']);
+
 const ehNumero = (v) => typeof v === 'number' && Number.isFinite(v);
 const vazio = (v) => v === null || v === undefined || v === '';
 const ouZero = (v) => (vazio(v) ? 0 : v);
@@ -63,14 +72,21 @@ export function validarEntrada(entrada) {
   if (op.regimeAduaneiro && op.regimeAduaneiro !== 'comum') {
     add('operacao.regimeAduaneiro', 'O v1 calcula só o regime aduaneiro comum.');
   }
-  if (op.regimeTributario && op.regimeTributario !== 'simples') {
-    add('operacao.regimeTributario', 'O v1 calcula só comprador no Simples Nacional.');
+  if (op.regimeTributario && !REGIMES_ACEITOS.includes(op.regimeTributario)) {
+    add('operacao.regimeTributario', 'Regime do comprador deve ser Simples Nacional ou Simples híbrido (IBS/CBS fora do DAS).');
   }
   if (op.rateio && op.rateio !== 'fob') {
     add('operacao.rateio', 'O v1 rateia só pelo valor FOB.');
   }
+  if (!vazio(op.moeda) && !MOEDAS_ACEITAS.includes(op.moeda)) {
+    add('operacao.moeda', `Moeda da operação deve ser ${MOEDAS_ACEITAS.join(' ou ')}.`);
+  }
+  if (!vazio(op.paridadeUSD) && (!ehNumero(op.paridadeUSD) || op.paridadeUSD <= 0)) {
+    add('operacao.paridadeUSD', 'Paridade US$ por unidade da moeda deve ser maior que zero.');
+  }
 
-  if (vazio(op.cambioFiscal)) add('operacao.cambioFiscal', 'Informe o câmbio fiscal (R$/US$).');
+  const sm = op.moeda === 'EUR' ? '€' : 'US$';
+  if (vazio(op.cambioFiscal)) add('operacao.cambioFiscal', `Informe o câmbio fiscal (R$/${sm}).`);
   else if (!ehNumero(op.cambioFiscal) || op.cambioFiscal <= 0) add('operacao.cambioFiscal', 'Câmbio fiscal deve ser um número maior que zero.');
 
   if (vazio(op.icms)) add('operacao.icms', 'Informe a alíquota de ICMS da UF de destino.');
@@ -81,7 +97,7 @@ export function validarEntrada(entrada) {
     else if (!ehNumero(op[campo]) || op[campo] < 0) add(`operacao.${campo}`, `${campo.toUpperCase()} deve ser um número maior ou igual a zero.`);
   }
 
-  for (const [campo, nome] of [['freteUSD', 'Frete'], ['seguroUSD', 'Seguro']]) {
+  for (const [campo, nome] of [['freteUSD', `Frete (${sm})`], ['seguroUSD', `Seguro (${sm})`]]) {
     if (!vazio(op[campo]) && (!ehNumero(op[campo]) || op[campo] < 0)) add(`operacao.${campo}`, `${nome} deve ser um número maior ou igual a zero.`);
   }
 
@@ -96,7 +112,7 @@ export function validarEntrada(entrada) {
   if (!pg || (pg.modo !== 'cambio' && pg.modo !== 'valorPagoBRL')) {
     add('operacao.pagamento', 'Escolha o modo de pagamento: câmbio + IOF ou valor pago em R$.');
   } else if (pg.modo === 'cambio') {
-    if (vazio(pg.cambioPagamento)) add('operacao.pagamento.cambioPagamento', 'Informe o câmbio do pagamento (R$/US$).');
+    if (vazio(pg.cambioPagamento)) add('operacao.pagamento.cambioPagamento', `Informe o câmbio do pagamento (R$/${sm}).`);
     else if (!ehNumero(pg.cambioPagamento) || pg.cambioPagamento <= 0) add('operacao.pagamento.cambioPagamento', 'Câmbio do pagamento deve ser maior que zero.');
     if (vazio(pg.iof)) add('operacao.pagamento.iof', 'Informe o IOF do pagamento (use 0 se não houver).');
     else if (!ehNumero(pg.iof) || pg.iof < 0) add('operacao.pagamento.iof', 'IOF deve ser maior ou igual a zero.');
@@ -117,7 +133,7 @@ export function validarEntrada(entrada) {
       if (!chaveNcm(item?.ncm)) add(`itens.${i}.ncm`, `${r}: informe a NCM.`);
       if (vazio(item?.qtd)) add(`itens.${i}.qtd`, `${r}: informe a quantidade.`);
       else if (!ehNumero(item.qtd) || item.qtd <= 0) add(`itens.${i}.qtd`, `${r}: quantidade deve ser maior que zero.`);
-      if (vazio(item?.fobUnitUSD)) add(`itens.${i}.fobUnitUSD`, `${r}: informe o preço FOB unitário (US$).`);
+      if (vazio(item?.fobUnitUSD)) add(`itens.${i}.fobUnitUSD`, `${r}: informe o preço FOB unitário (${sm}).`);
       else if (!ehNumero(item.fobUnitUSD) || item.fobUnitUSD <= 0) add(`itens.${i}.fobUnitUSD`, `${r}: preço FOB deve ser maior que zero.`);
       for (const [campo, nome] of [['ii', 'II'], ['ipi', 'IPI']]) {
         if (vazio(item?.[campo])) add(`itens.${i}.${campo}`, `${r}: alíquota de ${nome} em branco. Preencha com a alíquota confirmada.`);
@@ -258,11 +274,19 @@ export function calcular(entrada, opcoes = {}) {
   const faturamento = soma('precoTotal');
   const lucro = soma('lucroTotal');
 
+  const moeda = vazio(op.moeda) ? 'USD' : op.moeda;
+  const paridadeUSD = moeda === 'USD' ? 1 : (ehNumero(op.paridadeUSD) ? op.paridadeUSD : null);
+  const valorAduaneiroMoeda = soma('valorAduaneiroUSD');
+
   const totais = {
+    regimeTributario: vazio(op.regimeTributario) ? 'simples' : op.regimeTributario,
+    moeda,
+    paridadeUSD,
+    valorAduaneiroUSDTeto: paridadeUSD === null ? null : valorAduaneiroMoeda * paridadeUSD,
     fobUSD: fobTotal,
     adicoes,
     freteSeguroUSD,
-    valorAduaneiroUSD: soma('valorAduaneiroUSD'),
+    valorAduaneiroUSD: valorAduaneiroMoeda,
     valorAduaneiroBRL: vaBrlTotal,
     ii: soma('ii'),
     ipi: soma('ipi'),
@@ -295,16 +319,20 @@ export function calcular(entrada, opcoes = {}) {
  * @param {object} entrada
  * @param {object|null} saida resultado de calcular() ou null se a entrada for inválida
  * @param {object} ctx { tetoRtsUSD, ncms: [{ncm, ii, ipi, alerta?, personalizada?}] }
+ *        ou { tetoRtsUSD, referencia: (chaveNcm) => {ii, ipi, alerta?, personalizada?, fonte?} | null }
  * @returns {{nivel:'info'|'aviso'|'erro', texto:string, item?:number}[]}
  */
 export function gerarAlertas(entrada, saida, ctx = {}) {
   const alertas = [];
   const tabela = new Map((ctx.ncms || []).map((n) => [chaveNcm(n.ncm), n]));
+  const referencia = typeof ctx.referencia === 'function' ? (c) => ctx.referencia(c) : (c) => tabela.get(c);
   const teto = ctx.tetoRtsUSD ?? REGRAS_2026.tetoRtsUSD;
 
   if (saida) {
-    const va = saida.totais.valorAduaneiroUSD;
-    if (va > teto) {
+    const va = saida.totais.valorAduaneiroUSDTeto ?? (saida.totais.moeda && saida.totais.moeda !== 'USD' ? null : saida.totais.valorAduaneiroUSD);
+    if (va === null || va === undefined) {
+      alertas.push({ nivel: 'aviso', texto: 'Informe a paridade em US$ para conferir o teto de US$ 3.000 do regime simplificado.' });
+    } else if (va > teto) {
       alertas.push({ nivel: 'info', texto: 'Acima do teto do regime simplificado: regime comum.' });
     } else {
       alertas.push({ nivel: 'aviso', texto: 'Pode caber no regime simplificado (RTS). O v1 calcula só o regime comum.' });
@@ -321,7 +349,7 @@ export function gerarAlertas(entrada, saida, ctx = {}) {
     const r = rotuloItem(item, i);
     const chave = chaveNcm(item.ncm);
     if (!chave) return;
-    const ref = tabela.get(chave);
+    const ref = referencia(chave);
     if (!ref) {
       alertas.push({ nivel: 'aviso', item: i, texto: `${r}: NCM ${item.ncm} fora da tabela. Confirmar II e IPI com o despachante.` });
     } else {

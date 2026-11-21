@@ -5,6 +5,7 @@
   "description": "Calculadora de importação de eletrônicos · Wonder BOAT (v1: regime comum, Simples Nacional, aéreo/courier)",
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "atualizar-ncm": "node scripts/atualizar-ncm.mjs"
   }
 }

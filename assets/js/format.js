@@ -25,7 +25,7 @@ const TRACO = '—';
 export function parseNumero(texto) {
   if (texto === null || texto === undefined) return null;
   if (typeof texto === 'number') return Number.isFinite(texto) ? texto : NaN;
-  let s = String(texto).trim().replace(/\s|\u00a0/g, '').replace(/^(R\$|US\$|\$)/i, '').replace(/%$/, '');
+  let s = String(texto).trim().replace(/\s|\u00a0/g, '').replace(/^(R\$|US\$|\$|€|EUR)/i, '').replace(/%$/, '');
   if (s === '') return null;
   let negativo = false;
   if (s.startsWith('-')) { negativo = true; s = s.slice(1); }
@@ -75,6 +75,21 @@ export function brl(v) {
 
 export function usd(v) {
   return ok(v) ? fmtUSD.format(v) : TRACO;
+}
+
+const fmtMoeda = new Map([['USD', fmtUSD]]);
+/** Valor na moeda da operação (USD ou EUR), ex.: "€ 1.234,56". */
+export function dinheiro(v, moeda = 'USD') {
+  if (!ok(v)) return TRACO;
+  if (!fmtMoeda.has(moeda)) {
+    fmtMoeda.set(moeda, new Intl.NumberFormat(LOCALE, { style: 'currency', currency: moeda, minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  }
+  return fmtMoeda.get(moeda).format(v);
+}
+
+/** Símbolo da moeda para rótulos ("US$", "€"). */
+export function simboloMoeda(moeda = 'USD') {
+  return moeda === 'EUR' ? '€' : 'US$';
 }
 
 /** Número com casas fixas (padrão 2). */

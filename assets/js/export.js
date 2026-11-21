@@ -2,16 +2,16 @@
 
 import { csvNumero } from './format.js';
 
-const COLUNAS = [
+const colunas = (m) => [
   ['Item', (it, i) => String(i + 1)],
   ['Descrição', (it) => it.descricao],
   ['Código', (it) => it.codigo],
   ['NCM', (it) => it.ncm],
   ['Qtd', (it) => csvNumero(it.qtd, 2)],
-  ['FOB un US$', (it) => csvNumero(it.fobUnitUSD)],
-  ['FOB US$', (it) => csvNumero(it.fobUSD)],
-  ['Frete+seguro rateado US$', (it) => csvNumero(it.freteSeguroRateadoUSD)],
-  ['Valor aduaneiro US$', (it) => csvNumero(it.valorAduaneiroUSD)],
+  [`FOB un ${m}`, (it) => csvNumero(it.fobUnitUSD)],
+  [`FOB ${m}`, (it) => csvNumero(it.fobUSD)],
+  [`Frete+seguro rateado ${m}`, (it) => csvNumero(it.freteSeguroRateadoUSD)],
+  [`Valor aduaneiro ${m}`, (it) => csvNumero(it.valorAduaneiroUSD)],
   ['Valor aduaneiro R$', (it) => csvNumero(it.valorAduaneiroBRL)],
   ['II %', (it) => csvNumero(it.aliquotaII * 100, 4)],
   ['II R$', (it) => csvNumero(it.ii)],
@@ -27,7 +27,7 @@ const COLUNAS = [
   ['Despesas R$', (it) => csvNumero(it.despesasBRL)],
   ['Custo total R$', (it) => csvNumero(it.custoTotal)],
   ['Custo un R$', (it) => csvNumero(it.custoUnit)],
-  ['Fator R$/US$ FOB', (it) => csvNumero(it.fatorBRLporUSD, 4)],
+  [`Fator R$/${m} FOB`, (it) => csvNumero(it.fatorBRLporUSD, 4)],
   ['Markup', (it) => csvNumero(it.markup, 4)],
   ['Preço un R$', (it) => csvNumero(it.precoUnit)],
   ['Preço total R$', (it) => csvNumero(it.precoTotal)],
@@ -42,8 +42,10 @@ function celula(valor) {
   return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** CSV com uma linha por item e todas as colunas do resultado. Começa com BOM para o Excel ler UTF-8. */
+/** CSV com uma linha por item e todas as colunas do resultado. Começa com BOM para o Excel ler UTF-8.
+ *  Os cabeçalhos usam o símbolo da moeda da operação (US$ ou €). */
 export function gerarCSV(saida) {
+  const COLUNAS = colunas(saida.totais?.moeda === 'EUR' ? '€' : 'US$');
   const linhas = [COLUNAS.map(([titulo]) => celula(titulo)).join(';')];
   saida.itens.forEach((it, i) => {
     linhas.push(COLUNAS.map(([, valor]) => celula(valor(it, i))).join(';'));

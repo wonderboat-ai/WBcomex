@@ -1,4 +1,6 @@
-// Tabela de NCMs da calculadora. Primeira carga: só as NCMs da seção 6 da SPEC.
+// Tabela do app: as NCMs da seção 6 da SPEC v1. Quando os dados oficiais (data/aliquotas-oficiais.json,
+// MDIC/Camex e TIPI) carregam, eles prevalecem sobre esta tabela; ela fica como reserva e fornece as
+// observações e os alertas (ex.: ANATEL). Prioridade no app: personalizada > oficial > esta tabela.
 //
 // Todas foram lidas em buscadorncm.com.br em 20/11/2026, SEM confirmação em fonte oficial
 // (TEC, TIPI ou Siscomex). O site se contradiz em alguns pontos. O IPI é o "TIPI vigente"

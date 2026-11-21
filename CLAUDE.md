@@ -13,6 +13,10 @@ A especificação completa está em `SPEC.md`. Leia antes de mudar qualquer cois
 - **Alíquotas:**
   - São dados: ficam em `data/` e cada uma leva fonte e data de leitura.
   - Nunca inventar nem completar alíquota de memória. NCM sem alíquota com fonte fica em branco e destacada na tela.
+- **Dados oficiais de NCM:**
+  - `data/ncm-nomenclatura.json` e `data/aliquotas-oficiais.json` são gerados por `scripts/atualizar-ncm.mjs` e `scripts/gerar-aliquotas.py` a partir das fontes oficiais (Siscomex, MDIC/Camex, Receita). Nunca editar à mão.
+  - II: exceções temporárias dos Anexos IV, V, VI, VIII, IX e X (vigentes, sem Ex e sem quota) prevalecem sobre os Anexos I e II, conforme a nota oficial da planilha do MDIC (`tec.prevalencia`). Ex-tarifário e quota só geram alerta.
+  - Prioridade da alíquota na tela: NCM personalizada > dados oficiais > `data/ncm.js`.
 - **Cores e fontes:**
   - Use só os tokens CSS da seção 9 da SPEC e a fonte Montserrat.
   - Cor nova precisa do OK do dono do projeto.
