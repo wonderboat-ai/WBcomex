@@ -903,7 +903,7 @@ function executarBuscaNcm() {
     const aliq = ref
       ? `II ${esc(p2(ref.ii))} · IPI ${esc(ref.resIPI?.nt ? 'NT' : p2(ref.ipi))}${ref.tipo === 'oficial' ? '' : ` <span class="tag tag--aviso">${ref.tipo === 'personalizada' ? 'personalizada' : 'tabela do app'}</span>`}${ref.tipo === 'oficial' && (ref.resII.exs.length || ref.resII.menores.some((x) => x.anexo !== 'I' && x.anexo !== 'II')) ? ' <span class="tag tag--aviso">ver exceções</span>' : ''}`
       : '<span class="falta">sem alíquota</span>';
-    const caminho = r.caminho.slice(1).slice(-3).join(' › ');
+    const caminho = r.caminho.slice(1).slice(-3).map((x) => (x.length > 80 ? `${x.slice(0, 77)}…` : x)).join(' › ');
     return `
       <li class="busca__item">
         <div class="busca__texto">

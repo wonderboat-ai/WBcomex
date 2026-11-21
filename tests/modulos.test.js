@@ -44,7 +44,17 @@ describe('abrir e salvar JSON (storage.js)', () => {
     const fx = fixture('courier-8-itens-valor-pago.json').entrada;
     assert.throws(() => normalizarEntrada({ ...fx, itens: [{ ...fx.itens[0], qtd: 'dois' }] }, REGRAS_2026), /itens\[0\]\.qtd/);
     assert.throws(() => normalizarEntrada({ ...fx, operacao: { ...fx.operacao, pagamento: { modo: 'pix' } } }, REGRAS_2026), /pagamento\.modo/);
-    assert.throws(() => normalizarEntrada({ ...fx, operacao: { ...fx.operacao, regimeTributario: 'presumido' } }, REGRAS_2026), /simples/);
+    assert.throws(() => normalizarEntrada({ ...fx, operacao: { ...fx.operacao, regimeTributario: 'presumido' } }, REGRAS_2026), /não suportado/);
+  });
+
+  test('abre arquivo com regime híbrido e moeda euro; recusa regime desconhecido', () => {
+    const e = fixture('courier-8-itens-valor-pago.json').entrada;
+    const h = normalizarEntrada({ ...e, operacao: { ...e.operacao, regimeTributario: 'simples-hibrido', moeda: 'EUR', paridadeUSD: 1.0982 } }, REGRAS_2026);
+    assert.equal(h.operacao.regimeTributario, 'simples-hibrido');
+    assert.equal(h.operacao.moeda, 'EUR');
+    assert.equal(exportarEntrada(h).operacao.paridadeUSD, 1.0982);
+    assert.throws(() => normalizarEntrada({ ...e, operacao: { ...e.operacao, regimeTributario: 'presumido' } }, REGRAS_2026), /não suportado/);
+    assert.throws(() => normalizarEntrada({ ...e, operacao: { ...e.operacao, moeda: 'GBP' } }, REGRAS_2026), /não suportada/);
   });
 
   test('simulação nova segue os padrões da SPEC', () => {
