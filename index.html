@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calculadora de Importação · Wonder BOAT</title>
+  <meta name="description" content="Custo nacionalizado e preço de venda de eletrônicos importados, item a item. Regime comum, Simples Nacional, aéreo/courier.">
+  <meta name="theme-color" content="#030712">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="./assets/css/styles.css">
+  <script type="module" src="./assets/js/app.js"></script>
+</head>
+<body>
+  <a class="pular" href="#sec-operacao">Pular para as entradas</a>
+
+  <header class="topo">
+    <div class="topo__marca">
+      <span class="logo-slot logo-slot--tela">
+        <img class="logo" data-logo src="./assets/img/logo-wonderboat-branco.png" alt="Wonder BOAT" hidden>
+        <span class="logo-placeholder" aria-hidden="true">Wonder BOAT</span>
+      </span>
+      <span class="logo-slot logo-slot--impressao">
+        <img class="logo" data-logo src="./assets/img/logo-wonderboat-azul.png" alt="Wonder BOAT" hidden>
+        <span class="logo-placeholder" aria-hidden="true">Wonder BOAT</span>
+      </span>
+      <div class="topo__titulo">
+        <h1>Calculadora de Importação</h1>
+        <p class="topo__sub">Eletrônicos · regime comum · Simples Nacional · aéreo/courier</p>
+      </div>
+    </div>
+    <nav class="topo__acoes" aria-label="Ações da simulação">
+      <button type="button" class="btn btn--sec" id="btn-nova">Nova</button>
+      <button type="button" class="btn btn--sec" id="btn-abrir">Abrir</button>
+      <input type="file" id="arquivo-abrir" accept="application/json,.json" hidden>
+      <button type="button" class="btn btn--pri" id="btn-salvar">Salvar</button>
+      <button type="button" class="btn btn--sec" id="btn-csv">CSV</button>
+      <button type="button" class="btn btn--sec" id="btn-imprimir">Imprimir</button>
+    </nav>
+  </header>
+
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+
+  <!-- Cabeçalho que só aparece na impressão -->
+  <section class="impressao-cabecalho" aria-hidden="true">
+    <dl class="impressao-meta" id="impressao-meta"></dl>
+    <p class="impressao-aviso" id="impressao-aviso"></p>
+  </section>
+
+  <main class="layout">
+    <div class="entradas">
+
+      <!-- 1 OPERAÇÃO -->
+      <section class="card" id="sec-operacao" aria-labelledby="h-operacao">
+        <h2 id="h-operacao"><span class="card__num">1</span> Operação</h2>
+        <div class="grade grade--4">
+          <label class="campo campo--2">
+            <span class="campo__rotulo">Referência</span>
+            <input type="text" data-bind="operacao.referencia" data-tipo="texto" placeholder="Nº da invoice, pedido…" autocomplete="off">
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Data</span>
+            <input type="date" data-bind="operacao.data" data-tipo="texto">
+          </label>
+          <div class="campo campo--uf">
+            <label class="campo__rotulo" for="sel-uf">UF destino</label>
+            <select id="sel-uf" data-bind="operacao.uf" data-tipo="uf"></select>
+          </div>
+          <label class="campo">
+            <span class="campo__rotulo">ICMS %</span>
+            <input type="text" inputmode="decimal" data-bind="operacao.icms" data-tipo="pct" placeholder="—" autocomplete="off">
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Câmbio fiscal R$/US$ <abbr title="obrigatório">*</abbr></span>
+            <input type="text" inputmode="decimal" data-bind="operacao.cambioFiscal" data-tipo="numero" data-casas="4" placeholder="ex.: 5,79" autocomplete="off" required>
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Data da taxa</span>
+            <input type="date" data-bind="operacao.dataCambioFiscal" data-tipo="texto">
+          </label>
+          <div class="campo campo--2 campo--fx" id="fx-area">
+            <span class="campo__rotulo">Cotação</span>
+            <div class="fx" id="fx-conteudo"></div>
+          </div>
+        </div>
+        <p class="info-linha" id="info-regras"></p>
+
+        <fieldset class="pagamento">
+          <legend class="campo__rotulo">Pagamento</legend>
+          <div class="segmento" role="radiogroup">
+            <label class="segmento__opcao">
+              <input type="radio" name="modo-pagamento" value="cambio" data-bind="operacao.pagamento.modo" data-tipo="radio">
+              <span>Câmbio + IOF <small>cotação ou recompra</small></span>
+            </label>
+            <label class="segmento__opcao">
+              <input type="radio" name="modo-pagamento" value="valorPagoBRL" data-bind="operacao.pagamento.modo" data-tipo="radio">
+              <span>Valor pago em R$ <small>compra já feita</small></span>
+            </label>
+          </div>
+          <div class="grade grade--4" data-modo="cambio">
+            <label class="campo">
+              <span class="campo__rotulo">Câmbio do pagamento R$/US$</span>
+              <input type="text" inputmode="decimal" data-bind="operacao.pagamento.cambioPagamento" data-tipo="numero" data-casas="4" placeholder="ex.: 5,87" autocomplete="off">
+            </label>
+            <label class="campo">
+              <span class="campo__rotulo">IOF %</span>
+              <input type="text" inputmode="decimal" data-bind="operacao.pagamento.iof" data-tipo="pct" placeholder="ex.: 3,5" autocomplete="off">
+            </label>
+          </div>
+          <div class="grade grade--4" data-modo="valorPagoBRL">
+            <label class="campo campo--2">
+              <span class="campo__rotulo">Total pago em R$ (cartão + IOF)</span>
+              <input type="text" inputmode="decimal" data-bind="operacao.pagamento.valorPagoBRL" data-tipo="numero" placeholder="ex.: 18.317,33" autocomplete="off">
+            </label>
+            <p class="ajuda campo--2">Rateado entre os itens pelo valor FOB.</p>
+          </div>
+        </fieldset>
+      </section>
+
+      <!-- 2 ITENS -->
+      <section class="card" id="sec-itens" aria-labelledby="h-itens">
+        <div class="card__cab">
+          <h2 id="h-itens"><span class="card__num">2</span> Itens</h2>
+          <button type="button" class="btn btn--link" id="btn-ncms">Tabela de NCMs</button>
+        </div>
+        <div class="rolagem" tabindex="0" role="region" aria-label="Tabela de itens (rola na horizontal)">
+          <table class="tabela tabela--itens" id="tabela-itens">
+            <thead>
+              <tr>
+                <th scope="col" class="col-n">#</th>
+                <th scope="col" class="col-desc">Descrição</th>
+                <th scope="col" class="col-cod">Código</th>
+                <th scope="col" class="col-ncm">NCM</th>
+                <th scope="col" class="col-qtd num">Qtd</th>
+                <th scope="col" class="col-fob num">FOB un US$</th>
+                <th scope="col" class="col-pct num">II %</th>
+                <th scope="col" class="col-pct num">IPI %</th>
+                <th scope="col" class="col-mk num" title="Vazio = usa o markup global">Markup</th>
+                <th scope="col" class="col-acoes"><span class="sr">Ações</span></th>
+              </tr>
+            </thead>
+            <tbody id="itens-corpo"></tbody>
+            <tfoot>
+              <tr>
+                <th scope="row" colspan="4">FOB total</th>
+                <td class="num" id="itens-fob-total" colspan="2">—</td>
+                <td colspan="4" class="ajuda" id="itens-adicoes"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <datalist id="lista-ncm"></datalist>
+        <div class="card__rodape">
+          <button type="button" class="btn btn--sec" id="btn-add-item">+ Adicionar item</button>
+          <p class="ajuda">Borda laranja = alíquota diferente da tabela (↺ restaura). Borda vermelha = alíquota em branco: preencha com valor confirmado.</p>
+        </div>
+      </section>
+
+      <!-- 3 FRETE E DESPESAS -->
+      <section class="card" id="sec-frete" aria-labelledby="h-frete">
+        <h2 id="h-frete"><span class="card__num">3</span> Frete e despesas</h2>
+        <div class="grade grade--4">
+          <label class="campo">
+            <span class="campo__rotulo">Frete internacional US$</span>
+            <input type="text" inputmode="decimal" data-bind="operacao.freteUSD" data-tipo="numero" placeholder="0,00" autocomplete="off">
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Seguro US$</span>
+            <input type="text" inputmode="decimal" data-bind="operacao.seguroUSD" data-tipo="numero" placeholder="0,00" autocomplete="off">
+          </label>
+        </div>
+
+        <h3 class="subtitulo">Despesas em R$</h3>
+        <div class="despesas" id="despesas"></div>
+        <button type="button" class="btn btn--sec" id="btn-add-despesa">+ Adicionar despesa</button>
+
+        <h3 class="subtitulo">Taxa Siscomex</h3>
+        <div class="siscomex" id="siscomex">
+          <p class="siscomex__auto"><span id="siscomex-auto">—</span></p>
+          <div class="siscomex__manual" id="siscomex-manual" hidden>
+            <label class="campo">
+              <span class="campo__rotulo">Siscomex manual R$</span>
+              <input type="text" inputmode="decimal" data-bind="operacao.siscomexManualBRL" data-tipo="numero" placeholder="0,00" autocomplete="off" id="inp-siscomex">
+            </label>
+          </div>
+          <button type="button" class="btn btn--link" id="btn-siscomex">Editar</button>
+        </div>
+        <p class="ajuda" id="siscomex-obs"></p>
+      </section>
+
+      <!-- 4 PRECIFICAÇÃO -->
+      <section class="card" id="sec-precificacao" aria-labelledby="h-preco">
+        <h2 id="h-preco"><span class="card__num">4</span> Precificação</h2>
+        <div class="markup">
+          <label class="campo campo--markup">
+            <span class="campo__rotulo">Markup global (preço = custo × markup)</span>
+            <input type="text" inputmode="decimal" id="inp-markup" data-bind="precificacao.markupGlobal" data-tipo="numero" data-casas="2" autocomplete="off">
+          </label>
+          <input type="range" id="slider-markup" min="1" max="4" step="0.05" aria-label="Markup global">
+          <span class="markup__escala" aria-hidden="true"><span>1,00</span><span>4,00</span></span>
+        </div>
+        <h3 class="subtitulo">Deduções da venda <small>(em branco = 0)</small></h3>
+        <div class="grade grade--4">
+          <label class="campo">
+            <span class="campo__rotulo">Impostos (DAS) %</span>
+            <input type="text" inputmode="decimal" data-bind="precificacao.impostosVenda" data-tipo="pct" placeholder="0" autocomplete="off">
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Taxa de cartão %</span>
+            <input type="text" inputmode="decimal" data-bind="precificacao.taxaCartao" data-tipo="pct" placeholder="0" autocomplete="off">
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Comissão %</span>
+            <input type="text" inputmode="decimal" data-bind="precificacao.comissao" data-tipo="pct" placeholder="0" autocomplete="off">
+          </label>
+          <label class="campo">
+            <span class="campo__rotulo">Outras %</span>
+            <input type="text" inputmode="decimal" data-bind="precificacao.outrasDeducoes" data-tipo="pct" placeholder="0" autocomplete="off">
+          </label>
+        </div>
+        <p class="ajuda" id="deducoes-soma"></p>
+      </section>
+    </div>
+
+    <!-- RESUMO -->
+    <aside class="resumo" id="resumo" aria-labelledby="h-resumo">
+      <div class="card resumo__card">
+        <h2 id="h-resumo">Resumo</h2>
+        <dl class="kpis">
+          <div class="kpi"><dt>FOB total</dt><dd id="r-fob">—</dd></div>
+          <div class="kpi"><dt>Valor aduaneiro <small>FOB + frete + seguro</small></dt><dd id="r-va">—</dd></div>
+          <div class="kpi kpi--custo"><dt>Custo nacionalizado</dt><dd id="r-custo">—</dd></div>
+          <div class="kpi"><dt>Fator R$ por US$ FOB</dt><dd id="r-fator">—</dd></div>
+          <div class="kpi"><dt>Tributos <small id="r-trib-pct"></small></dt><dd id="r-trib">—</dd></div>
+          <div class="kpi kpi--venda"><dt>Faturamento</dt><dd id="r-fat">—</dd></div>
+          <div class="kpi"><dt>Lucro <small id="r-margem"></small></dt><dd id="r-lucro">—</dd></div>
+        </dl>
+        <div class="erros" id="r-erros" hidden>
+          <h3>Faltam dados</h3>
+          <ul id="r-erros-lista"></ul>
+        </div>
+        <ul class="alertas" id="r-alertas" aria-label="Alertas"></ul>
+      </div>
+    </aside>
+  </main>
+
+  <div class="resultados">
+    <section class="card" id="sec-resultado" aria-labelledby="h-resultado">
+      <h2 id="h-resultado">Resultado por item</h2>
+      <div class="rolagem" tabindex="0" role="region" aria-label="Resultado por item (rola na horizontal)">
+        <table class="tabela tabela--res" id="tabela-preco">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Item</th>
+              <th scope="col">NCM</th>
+              <th scope="col" class="num">Qtd</th>
+              <th scope="col" class="num">Custo un R$</th>
+              <th scope="col" class="num">Fator</th>
+              <th scope="col" class="num">Markup</th>
+              <th scope="col" class="num">Preço un R$</th>
+              <th scope="col" class="num">Preço total R$</th>
+              <th scope="col" class="num">Lucro un R$</th>
+              <th scope="col" class="num">Margem</th>
+            </tr>
+          </thead>
+          <tbody id="preco-corpo"></tbody>
+          <tfoot id="preco-rodape"></tfoot>
+        </table>
+      </div>
+
+      <h3 class="subtitulo" id="sub-custo">Custo discriminado por item</h3>
+      <div class="rolagem" tabindex="0" role="region" aria-label="Custo discriminado por item (rola na horizontal)">
+        <table class="tabela tabela--res tabela--custo" id="tabela-custo">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Item · NCM</th>
+              <th scope="col" class="num">FOB US$</th>
+              <th scope="col" class="num" title="Frete + seguro rateados pelo FOB">Frete US$</th>
+              <th scope="col" class="num">VA US$</th>
+              <th scope="col" class="num">VA R$</th>
+              <th scope="col" class="num">II</th>
+              <th scope="col" class="num">IPI</th>
+              <th scope="col" class="num">PIS</th>
+              <th scope="col" class="num">COFINS</th>
+              <th scope="col" class="num">Siscomex</th>
+              <th scope="col" class="num">ICMS</th>
+              <th scope="col" class="num">Tributos</th>
+              <th scope="col" class="num">Pagamento</th>
+              <th scope="col" class="num">Despesas</th>
+              <th scope="col" class="num">Custo total R$</th>
+            </tr>
+          </thead>
+          <tbody id="custo-corpo"></tbody>
+          <tfoot id="custo-rodape"></tfoot>
+        </table>
+      </div>
+      <p class="vazio-msg" id="res-vazio" hidden>Complete os dados para ver o resultado.</p>
+    </section>
+
+    <section class="card" id="sec-composicao" aria-labelledby="h-composicao">
+      <h2 id="h-composicao">Composição do custo</h2>
+      <div id="composicao"></div>
+    </section>
+
+    <section class="card" id="sec-memoria" aria-labelledby="h-memoria">
+      <h2 id="h-memoria">Memória de cálculo</h2>
+      <p class="ajuda">Uma linha por fórmula, com os valores de cada item. Precisão total no cálculo; a tela arredonda para 2 casas.</p>
+      <div id="memoria"></div>
+    </section>
+  </div>
+
+  <footer class="rodape">
+    <p><strong>Wonder BOAT | Wonder HUB.AI</strong></p>
+    <p id="rodape-regras"></p>
+  </footer>
+
+  <div class="barra-mobile" aria-hidden="true">
+    <div><span>Custo total</span><strong id="m-custo">—</strong></div>
+    <div><span>Faturamento</span><strong id="m-fat">—</strong></div>
+  </div>
+
+  <dialog class="dialogo" id="dlg-ncm" aria-labelledby="h-ncm">
+    <form method="dialog" class="dialogo__fechar"><button class="btn btn--link" aria-label="Fechar">Fechar ✕</button></form>
+    <h2 id="h-ncm">Tabela de NCMs</h2>
+    <p class="ajuda" id="ncm-fonte"></p>
+    <div class="rolagem">
+      <table class="tabela tabela--ncm">
+        <thead>
+          <tr>
+            <th scope="col">NCM</th>
+            <th scope="col">Descrição</th>
+            <th scope="col" class="num">II</th>
+            <th scope="col" class="num">IPI</th>
+            <th scope="col">Base do II · fonte · leitura</th>
+            <th scope="col">Observação</th>
+            <th scope="col"><span class="sr">Ações</span></th>
+          </tr>
+        </thead>
+        <tbody id="ncm-corpo"></tbody>
+      </table>
+    </div>
+    <h3 class="subtitulo">Adicionar NCM personalizada</h3>
+    <p class="ajuda">Fica salva só neste navegador, marcada como "personalizada". Informe de onde veio a alíquota.</p>
+    <form class="grade grade--4" id="form-ncm" novalidate>
+      <label class="campo"><span class="campo__rotulo">NCM</span><input name="ncm" type="text" inputmode="numeric" placeholder="0000.00.00" required autocomplete="off"></label>
+      <label class="campo campo--3"><span class="campo__rotulo">Descrição</span><input name="descricao" type="text" required autocomplete="off"></label>
+      <label class="campo"><span class="campo__rotulo">II %</span><input name="ii" type="text" inputmode="decimal" required autocomplete="off"></label>
+      <label class="campo"><span class="campo__rotulo">IPI %</span><input name="ipi" type="text" inputmode="decimal" required autocomplete="off"></label>
+      <label class="campo"><span class="campo__rotulo">Lida em</span><input name="lidoEm" type="date" required></label>
+      <label class="campo"><span class="campo__rotulo">Fonte da alíquota</span><input name="fonte" type="text" placeholder="ex.: TIPI, despachante" required autocomplete="off"></label>
+      <label class="campo campo--3"><span class="campo__rotulo">Observação</span><input name="observacao" type="text" autocomplete="off"></label>
+      <div class="campo campo--acao"><button type="submit" class="btn btn--pri">Adicionar NCM</button></div>
+      <p class="erro-form campo--4" id="ncm-erro" role="alert"></p>
+    </form>
+  </dialog>
+</body>
+</html>
